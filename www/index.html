@@ -21,12 +21,36 @@ input{font:inherit;color:var(--text);background:#1a1527;border:3px solid var(--l
 .stage{background:linear-gradient(#efe6d4 0 72%,#c9a77f 72%);border:3px solid var(--line);display:flex;justify-content:center;align-items:flex-end;height:290px;position:relative;overflow:hidden}
 .sprite{width:44px;height:54px;image-rendering:pixelated;transform:scale(5);transform-origin:bottom center;margin-bottom:6px}
 .say{position:absolute;top:8px;left:8px;right:8px;text-align:center;color:#2a2238;font-weight:bold;font-size:14px}
-.bars{display:grid;grid-template-columns:70px 1fr;gap:6px 8px;align-items:center;font-size:14px}.bar{height:14px;background:#1a1527;border:2px solid var(--line)}.bar i{display:block;height:100%}
+.bars{display:grid;grid-template-columns:auto 1fr;gap:6px 8px;align-items:center;font-size:14px}.bar{height:14px;background:#1a1527;border:2px solid var(--line)}.bar i{display:block;height:100%}
 .row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .meter{position:relative;height:56px;background:#1a1527;border:3px solid var(--line)}.zone{position:absolute;top:0;bottom:0;background:var(--green)}.mark{position:absolute;top:-4px;bottom:-4px;width:6px;background:var(--text)}
 .fight{display:flex;justify-content:space-between;align-items:flex-end;background:#40304f;border:3px solid var(--line);height:230px;padding:0 18px 8px;overflow:hidden}
-.fight .sprite{transform:scale(3);margin-left:44px}#bossArt{image-rendering:pixelated;width:144px;height:144px}
+.fight .sprite{transform:scale(3);margin-left:44px}#bossArt{image-rendering:pixelated;width:144px;height:144px}#bossArt:not(.hit){animation:bob 1.2s steps(1) infinite}@keyframes bob{50%{transform:translateY(-4px)}}
 .hit{animation:hit .25s}@keyframes hit{0%,100%{translate:0}25%{translate:-8px}75%{translate:8px}}
+#trainMeter{overflow:hidden;cursor:pointer}#trainMeter .zone{background:none}#trainMeter .zone.shut{z-index:1}
+#trainMeter .zone::before,#trainMeter .zone::after{content:"";position:absolute;top:1px;width:48px;height:48px;background-size:100% 100%;image-rendering:pixelated;transition:transform .12s}
+#trainMeter .zone::before{right:100%;background-image:url(sprites/leaf_right.png)}#trainMeter .zone::after{left:100%;background-image:url(sprites/leaf_left.png)}
+#trainMeter .zone.shut::before{transform:translateX(var(--shut))}#trainMeter .zone.shut::after{transform:translateX(calc(var(--shut) * -1))}
+#trainMeter .mark{top:17px;bottom:auto;width:24px;height:15px;margin-left:-9px;background:url(sprites/rice.png) 0 0/100% 100%;image-rendering:pixelated}
+.bossRow{display:grid;grid-template-columns:72px 1fr 104px;gap:10px;align-items:center;background:var(--panel);border:3px solid var(--line);padding:6px 8px}
+.bossRow img{width:72px;height:72px;image-rendering:pixelated}.bossRow.locked img{filter:brightness(0) opacity(.55)}.bossRow b{display:block}.bossRow button{padding:8px 4px;font-size:14px}
+#bossList{display:flex;flex-direction:column;gap:8px}
+.fight{position:relative;touch-action:manipulation}#btnBossTap{touch-action:manipulation}#bossInfo{min-height:2.7em}
+.bowl{display:none;position:absolute;left:54px;bottom:4px;width:80px;height:56px;background:url(sprites/poke_bowl.png) 0 0/400% 100%;image-rendering:pixelated;z-index:2}.bowl.on{display:block}
+.hitNum{position:absolute;right:60px;top:40px;color:var(--gold);font-weight:bold;font-size:20px;pointer-events:none;text-shadow:2px 2px 0 #000;animation:hitNum .5s forwards}@keyframes hitNum{to{transform:translateY(-34px);opacity:0}}
+.ic{width:24px;height:24px;image-rendering:pixelated;vertical-align:-6px}.stat{display:inline-flex;align-items:center;gap:5px;font-weight:bold}
+button .ic{margin-right:5px}.stats{display:flex;justify-content:center;gap:22px;font-size:18px}
+.golden{position:fixed;width:80px;height:56px;image-rendering:pixelated;z-index:10;cursor:pointer;touch-action:none;filter:drop-shadow(0 0 8px #ffd34d);opacity:0}
+.modal{position:fixed;inset:0;background:#000b;display:none;align-items:center;justify-content:center;padding:16px;z-index:20}.modal.on{display:flex}
+.panel{background:var(--bg);border:3px solid var(--gold);padding:14px;display:flex;flex-direction:column;gap:12px;width:100%;max-width:440px}
+.days{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.day{background:var(--panel);border:3px solid var(--line);padding:6px 2px;text-align:center;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:3px}
+.day .ic{width:32px;height:32px}.day.done{opacity:.4}.day.today{border-color:var(--gold)}.day:last-child{grid-column:span 2}
+.menuList{display:flex;flex-direction:column;gap:8px}
+#whackGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.hole{aspect-ratio:1;background:#40304f;padding:0;min-height:0;display:flex;align-items:center;justify-content:center;touch-action:manipulation}.hole img{width:78%;image-rendering:pixelated;pointer-events:none}
+#orderPads{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pad{height:120px;padding:0;touch-action:manipulation}.pad img{width:72px;height:72px;image-rendering:pixelated;pointer-events:none}.pad.lit{background:var(--gold);border-color:var(--text)}
+#miniCanvas{width:100%;image-rendering:pixelated;touch-action:none;border:3px solid var(--line);display:block}
+@media (max-height:760px){#s-home{gap:8px}#s-home .stage{height:230px}#pet{transform:scale(4)}}
+@media (max-height:640px){#s-home .stage{height:150px}#pet{transform:scale(2.5)}#s-home button{min-height:42px;padding:8px}}
 .toast{position:fixed;left:16px;right:16px;bottom:24px;max-width:448px;margin:auto;background:#000c;border:2px solid var(--gold);padding:10px;text-align:center;font-weight:bold;pointer-events:none;opacity:0;transition:opacity .2s}.toast.on{opacity:1}
 </style>
 </head>
@@ -43,37 +67,84 @@ input{font:inherit;color:var(--text);background:#1a1527;border:3px solid var(--l
   </section>
 
   <section class="screen" id="s-home">
-    <div class="top"><span>Lv <span id="lvl"></span></span><span class="streak" id="streak"></span><button class="link" id="btnAccount" style="min-height:0;padding:0"></button></div>
+    <div class="top"><span class="stat"><img class="ic" src="sprites/icons/star.png" alt="Level" title="Level"><span id="lvl"></span></span><span class="stat streak"><img class="ic" src="sprites/icons/bowl.png" alt="Streak" title="Streak"><span id="streak"></span></span><button class="link" id="btnAccount" style="min-height:0;padding:0"></button></div>
     <div class="xp"><i id="xpFill"></i></div>
     <div class="stage"><div class="say" id="say"></div><div class="sprite" id="pet"></div></div>
     <div class="bars">
-      <span>Food</span><div class="bar"><i id="b-food" style="background:var(--gold)"></i></div>
-      <span>Energy</span><div class="bar"><i id="b-energy" style="background:var(--blue)"></i></div>
-      <span>Joy</span><div class="bar"><i id="b-joy" style="background:var(--green)"></i></div>
+      <span><img class="ic" src="sprites/icons/apple.png" alt="Food" title="Food"></span><div class="bar"><i id="b-food" style="background:var(--gold)"></i></div>
+      <span><img class="ic" src="sprites/icons/bolt.png" alt="Energy" title="Energy"></span><div class="bar"><i id="b-energy" style="background:var(--blue)"></i></div>
+      <span><img class="ic" src="sprites/icons/smile.png" alt="Joy" title="Joy"></span><div class="bar"><i id="b-joy" style="background:var(--green)"></i></div>
     </div>
-    <div class="row"><button id="btnFeed">Feed</button><button id="btnRest">Rest</button><button id="btnCheer">Cheer</button></div>
-    <div class="row2"><button class="main" id="btnTrain">Train</button><button class="boss" id="btnBoss"></button></div>
-    <p class="center dim">Strength <b id="str"></b> &nbsp;·&nbsp; Bosses beaten <b id="wins"></b> &nbsp;·&nbsp; Shields <b id="shields"></b></p>
+    <div class="row"><button id="btnFeed"><img class="ic" src="sprites/icons/apple.png" alt="" title="">Feed</button><button id="btnRest"><img class="ic" src="sprites/icons/moon.png" alt="" title="">Rest</button><button id="btnCheer"><img class="ic" src="sprites/icons/heart.png" alt="" title="">Cheer</button></div>
+    <div class="row2"><button class="main" id="btnTrain"><img class="ic" src="sprites/icons/rice.png" alt="" title="">Train</button><button class="boss" id="btnBoss"><img class="ic" src="sprites/icons/trophy.png" alt="" title=""><span id="btnBossLabel"></span></button></div>
+    <button id="btnMinis"><img class="ic" src="sprites/pizza.png" alt="">Minigames</button>
+    <div class="stats"><span class="stat"><img class="ic" src="sprites/icons/dumbbell.png" alt="Strength" title="Strength"><span id="str"></span></span><span class="stat"><img class="ic" src="sprites/icons/trophy.png" alt="Bosses beaten" title="Bosses beaten"><span id="wins"></span></span><span class="stat"><img class="ic" src="sprites/icons/shield.png" alt="Shields" title="Shields"><span id="shields"></span></span></div>
+  </section>
+
+  <section class="screen" id="s-trainMenu">
+    <h2>Training</h2>
+    <p class="center dim">Each game costs 10 energy. Play well to gain up to +3 Strength.</p>
+    <div class="menuList" id="trainList"></div>
+    <button class="back" data-home>Back</button>
+  </section>
+
+  <section class="screen" id="s-minis">
+    <h2>Minigames</h2>
+    <p class="center dim">Each game costs 5 energy. Play for Joy and XP.</p>
+    <div class="menuList" id="miniList"></div>
+    <button class="back" data-home>Back</button>
+  </section>
+
+  <section class="screen" id="s-whack">
+    <h2>Veggie Whack</h2>
+    <p class="center dim">Tap the vegetables. Leave the poke bowls alone!</p>
+    <div id="whackGrid"></div>
+    <p class="center" id="whackInfo"></p>
+  </section>
+
+  <section class="screen" id="s-order">
+    <h2>Order Up</h2>
+    <p class="center dim">Watch the order, then tap it back the same way.</p>
+    <p class="center" id="orderInfo"></p>
+    <div id="orderPads"></div>
+  </section>
+
+  <section class="screen" id="s-mini">
+    <h2 id="miniTitle"></h2>
+    <p class="center" id="miniInfo"></p>
+    <canvas id="miniCanvas" width="320" height="440"></canvas>
+    <button id="btnMiniQuit">Quit</button>
   </section>
 
   <section class="screen" id="s-train">
-    <h2>Power Punch</h2>
-    <p class="center dim">Tap when the bar is in the green zone!</p>
+    <h2>Rice Wrap</h2>
+    <p class="center dim">Tap when the grain of rice is between the leaves!</p>
     <div class="stage" style="height:220px"><div class="sprite" id="trainPet"></div></div>
     <div class="meter" id="trainMeter"><div class="zone"></div><div class="mark"></div></div>
     <p class="center" id="trainInfo"></p>
-    <button class="main" id="btnTrainTap" style="min-height:80px">PUNCH!</button>
+    <button class="main" id="btnTrainTap" style="min-height:80px">WRAP!</button>
+  </section>
+
+  <section class="screen" id="s-bosses">
+    <h2>Bosses</h2>
+    <p class="center dim">Rematches cost 10 energy. Win for +1 Strength and +20 XP.</p>
+    <div id="bossList"></div>
+    <button id="btnBossBack">Back</button>
   </section>
 
   <section class="screen" id="s-boss">
     <h2 id="bossName"></h2>
     <div class="bars"><span>Boss</span><div class="bar"><i id="b-boss" style="background:var(--red)"></i></div><span>You</span><div class="bar"><i id="b-you" style="background:var(--green)"></i></div></div>
-    <div class="fight"><div class="sprite" id="fightPet"></div><canvas id="bossArt" width="24" height="24"></canvas></div>
-    <div class="meter" id="bossMeter"><div class="zone"></div><div class="mark"></div></div>
+    <div class="fight"><div class="sprite" id="fightPet"></div><img id="bossArt" alt=""><div class="bowl" id="bowl"></div></div>
     <p class="center" id="bossInfo"></p>
     <button class="boss" id="btnBossTap" style="min-height:80px">ATTACK!</button>
   </section>
 </div>
+<div class="modal" id="daily"><div class="panel">
+  <h2>Daily reward</h2>
+  <div class="days" id="dailyDays"></div>
+  <button class="main" id="btnClaim">Claim</button>
+</div></div>
 <div class="toast" id="toast"></div>
 <script src="cloud.js"></script>
 <script src="game.js"></script>
