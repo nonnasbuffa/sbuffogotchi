@@ -282,6 +282,10 @@ const Game = (() => {
     if (msg) { toast(msg); play($('pet'), 'happy', restingAnim()); }
   }
   async function authAction(kind) {
+    if (!$('user').value.trim() || !$('pass').value) {
+      $('loginMsg').textContent = 'Type a username and password first.';
+      return;
+    }
     $('loginMsg').textContent = 'Connecting...';
     try {
       await Cloud[kind]($('user').value, $('pass').value);

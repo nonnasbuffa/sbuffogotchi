@@ -35,7 +35,7 @@ const Cloud = (() => {
     const data = await res.json();
     if (!res.ok) {
       const code = String(data.error?.message || '').split(' ')[0];
-      throw new Error(friendly[code] || (code.startsWith('WEAK_PASSWORD') ? 'Password needs 6+ characters.' : 'Could not sign in. Try again.'));
+      throw new Error(friendly[code] || (code.startsWith('WEAK_PASSWORD') ? 'Password needs 6+ characters.' : `Could not sign in (${code || res.status}). Try again.`));
     }
     remember({ uid: data.localId, name: name.trim(), token: data.idToken, refresh: data.refreshToken, expires: Date.now() + data.expiresIn * 1000 });
   }
