@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Sbuffogotchi</string>
+    <string name="title_activity_main">Sbuffogotchi</string>
+    <string name="package_name">com.nonnasbuffa.sbuffogotchi</string>
+    <string name="custom_url_scheme">com.nonnasbuffa.sbuffogotchi</string>
+</resources>

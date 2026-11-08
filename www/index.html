@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Sbuffogotchi</title>
+<style>
+:root{--bg:#231d33;--panel:#352c4a;--line:#55486f;--text:#f6eedd;--dim:#b9aec9;--gold:#ffc857;--green:#5fcf80;--red:#e8604c;--blue:#62b6e8}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:16px/1.35 "Courier New",monospace;user-select:none}
+#app{max-width:480px;min-height:100%;margin:auto;padding:max(12px,env(safe-area-inset-top)) 16px 20px;display:flex;flex-direction:column;gap:12px}
+.screen{display:none;flex-direction:column;gap:12px;flex:1}.screen.on{display:flex}
+h1{font-size:26px;margin:18px 0 4px;text-align:center;color:var(--gold)}h2{font-size:20px;margin:0;text-align:center}
+p{margin:0}.dim{color:var(--dim);font-size:14px}.center{text-align:center}
+button{font:inherit;font-weight:bold;color:var(--text);background:var(--panel);border:3px solid var(--line);padding:12px 8px;min-height:48px;cursor:pointer}
+button:active{transform:translateY(2px)}button:disabled{opacity:.45}
+button.main{background:#2f7d5b;border-color:var(--green)}button.boss{background:#7c2f3c;border-color:var(--red)}button.link{background:none;border:0;color:var(--dim);font-weight:normal;text-decoration:underline}
+input{font:inherit;color:var(--text);background:#1a1527;border:3px solid var(--line);padding:12px;width:100%;user-select:text}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:bold}
+.streak{color:var(--gold)}.xp{height:12px;background:#1a1527;border:2px solid var(--line)}.xp i{display:block;height:100%;background:var(--blue)}
+.stage{background:linear-gradient(#efe6d4 0 72%,#c9a77f 72%);border:3px solid var(--line);display:flex;justify-content:center;align-items:flex-end;height:290px;position:relative;overflow:hidden}
+.sprite{width:44px;height:54px;image-rendering:pixelated;transform:scale(5);transform-origin:bottom center;margin-bottom:6px}
+.say{position:absolute;top:8px;left:8px;right:8px;text-align:center;color:#2a2238;font-weight:bold;font-size:14px}
+.bars{display:grid;grid-template-columns:70px 1fr;gap:6px 8px;align-items:center;font-size:14px}.bar{height:14px;background:#1a1527;border:2px solid var(--line)}.bar i{display:block;height:100%}
+.row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.meter{position:relative;height:56px;background:#1a1527;border:3px solid var(--line)}.zone{position:absolute;top:0;bottom:0;background:var(--green)}.mark{position:absolute;top:-4px;bottom:-4px;width:6px;background:var(--text)}
+.fight{display:flex;justify-content:space-between;align-items:flex-end;background:#40304f;border:3px solid var(--line);height:230px;padding:0 18px 8px;overflow:hidden}
+.fight .sprite{transform:scale(3);margin-left:44px}#bossArt{image-rendering:pixelated;width:144px;height:144px}
+.hit{animation:hit .25s}@keyframes hit{0%,100%{translate:0}25%{translate:-8px}75%{translate:8px}}
+.toast{position:fixed;left:16px;right:16px;bottom:24px;max-width:448px;margin:auto;background:#000c;border:2px solid var(--gold);padding:10px;text-align:center;font-weight:bold;pointer-events:none;opacity:0;transition:opacity .2s}.toast.on{opacity:1}
+</style>
+</head>
+<body>
+<div id="app">
+  <section class="screen" id="s-login">
+    <h1>SBUFFOGOTCHI</h1>
+    <p class="center dim">Sign in so your progress is never lost.</p>
+    <input id="user" placeholder="Username" autocomplete="username" autocapitalize="none">
+    <input id="pass" type="password" placeholder="Password (6+ characters)" autocomplete="current-password">
+    <div class="row2"><button class="main" id="btnLogin">Log in</button><button id="btnSignup">Create account</button></div>
+    <p class="center dim" id="loginMsg"></p>
+    <button class="link" id="btnOffline">Play without an account (saved on this device only)</button>
+  </section>
+
+  <section class="screen" id="s-home">
+    <div class="top"><span>Lv <span id="lvl"></span></span><span class="streak" id="streak"></span><button class="link" id="btnAccount" style="min-height:0;padding:0"></button></div>
+    <div class="xp"><i id="xpFill"></i></div>
+    <div class="stage"><div class="say" id="say"></div><div class="sprite" id="pet"></div></div>
+    <div class="bars">
+      <span>Food</span><div class="bar"><i id="b-food" style="background:var(--gold)"></i></div>
+      <span>Energy</span><div class="bar"><i id="b-energy" style="background:var(--blue)"></i></div>
+      <span>Joy</span><div class="bar"><i id="b-joy" style="background:var(--green)"></i></div>
+    </div>
+    <div class="row"><button id="btnFeed">Feed</button><button id="btnRest">Rest</button><button id="btnCheer">Cheer</button></div>
+    <div class="row2"><button class="main" id="btnTrain">Train</button><button class="boss" id="btnBoss"></button></div>
+    <p class="center dim">Strength <b id="str"></b> &nbsp;·&nbsp; Bosses beaten <b id="wins"></b> &nbsp;·&nbsp; Shields <b id="shields"></b></p>
+  </section>
+
+  <section class="screen" id="s-train">
+    <h2>Power Punch</h2>
+    <p class="center dim">Tap when the bar is in the green zone!</p>
+    <div class="stage" style="height:220px"><div class="sprite" id="trainPet"></div></div>
+    <div class="meter" id="trainMeter"><div class="zone"></div><div class="mark"></div></div>
+    <p class="center" id="trainInfo"></p>
+    <button class="main" id="btnTrainTap" style="min-height:80px">PUNCH!</button>
+  </section>
+
+  <section class="screen" id="s-boss">
+    <h2 id="bossName"></h2>
+    <div class="bars"><span>Boss</span><div class="bar"><i id="b-boss" style="background:var(--red)"></i></div><span>You</span><div class="bar"><i id="b-you" style="background:var(--green)"></i></div></div>
+    <div class="fight"><div class="sprite" id="fightPet"></div><canvas id="bossArt" width="24" height="24"></canvas></div>
+    <div class="meter" id="bossMeter"><div class="zone"></div><div class="mark"></div></div>
+    <p class="center" id="bossInfo"></p>
+    <button class="boss" id="btnBossTap" style="min-height:80px">ATTACK!</button>
+  </section>
+</div>
+<div class="toast" id="toast"></div>
+<script src="cloud.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
