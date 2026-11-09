@@ -5,7 +5,9 @@ const Game = (() => {
   const clamp = (v, a = 0, b = 100) => Math.max(a, Math.min(b, v));
   // She dies at 0 Food or 0 Energy, so a full bar lasts about two days of Food and four of Energy.
   const DECAY_PER_HOUR = { food: 2, energy: 1, joy: 3 };
-  const CARE_COOLDOWN = 60000;
+  const PET_JOY = 3;
+  const PET_GAP_MS = 300;
+  const FEED_JOY = 10;
   const BOSS_EVERY = 3;
   const ANIMS = {
     idle: [500, 450, 500, 140],
@@ -198,13 +200,22 @@ const Game = (() => {
     const need = nextBossLevel();
     $('btnBossLabel').textContent = t(S.level >= need ? 'bossReady' : 'bosses');
     $('btnTrain').disabled = S.energy <= 10;
-    $('btnCheer').disabled = Date.now() - (S.care.joy || 0) < CARE_COOLDOWN;
   }
-  function care(k, amount) {
-    S[k] = clamp(S[k] + amount); S.care[k] = Date.now();
-    const gain = addXp(3);
-    save(); render(); toast(t('plusXp', { n: gain }));
+  // Tapping her makes her happier; the short gap stops one held-down tap from filling the bar.
+  let lastPet = 0;
+  function petHer(e) {
+    e.preventDefault();
+    const now = Date.now();
+    if (now - lastPet < PET_GAP_MS) return;
+    lastPet = now;
+    tick();
+    S.joy = clamp(S.joy + PET_JOY);
+    save(); render();
     play($('pet'), 'happy', restingAnim());
+    const heart = document.createElement('span');
+    heart.className = 'heart'; heart.textContent = '♥';
+    heart.onanimationend = () => heart.remove();
+    $('pet').parentElement.append(heart);
   }
 
   // ----- items -----
@@ -232,12 +243,19 @@ const Game = (() => {
     addItems(found);
     return found;
   }
+  let bagFilter = null;
+  function openBag(filter) {
+    bagFilter = filter;
+    show('bag');
+  }
   function renderBag() {
     tick();
-    $('bagStatus').textContent = `${t('food')} ${Math.round(S.food)}% · ${t('energy')} ${Math.round(S.energy)}%`;
+    const foodLine = `${t('food')} ${Math.round(S.food)}%`, energyLine = `${t('energy')} ${Math.round(S.energy)}%`;
+    $('bagStatus').textContent = bagFilter === 'food' ? foodLine : bagFilter === 'energy' ? energyLine : `${foodLine} · ${energyLine}`;
     const list = $('bagList');
     list.textContent = '';
     for (const [stat, heading] of [['food', 'foodSection'], ['energy', 'energySection']]) {
+      if (bagFilter && bagFilter !== stat) continue;
       const head = document.createElement('div');
       head.className = 'bagHead'; head.textContent = t(heading);
       list.append(head);
@@ -253,7 +271,7 @@ const Game = (() => {
         title.textContent = `${t(item.key)} x${count}`;
         const about = document.createElement('span');
         about.className = 'dim';
-        about.textContent = t(stat === 'food' ? 'plusFood' : 'plusEnergy', { n: item.amount });
+        about.textContent = stat === 'food' ? `${t('plusFood', { n: item.amount })} · +${FEED_JOY} ♥` : t('plusEnergy', { n: item.amount });
         text.append(title, about);
         const use = document.createElement('button');
         use.textContent = t('use'); use.className = 'main';
@@ -263,6 +281,7 @@ const Game = (() => {
         list.append(row);
       }
     }
+    if (bagFilter) return;
     const head = document.createElement('div');
     head.className = 'bagHead'; head.textContent = t('specialSection');
     const row = document.createElement('div');
@@ -284,10 +303,12 @@ const Game = (() => {
     tick();
     S.items[id] -= 1;
     S[item.stat] = clamp(S[item.stat] + item.amount);
+    const fed = item.stat === 'food';
+    if (fed) S.joy = clamp(S.joy + FEED_JOY);
     const xp = addXp(3);
     save(); show('home');
     play($('pet'), 'happy', restingAnim());
-    toast(`${t(item.stat === 'food' ? 'plusFood' : 'plusEnergy', { n: item.amount })} · ${t('plusXp', { n: xp })}`);
+    toast(`${t(fed ? 'plusFood' : 'plusEnergy', { n: item.amount })}${fed ? ` · ${t('plusJoy', { n: FEED_JOY })}` : ''} · ${t('plusXp', { n: xp })}`);
   }
 
   // ----- death -----
@@ -988,9 +1009,10 @@ const Game = (() => {
   }
 
   // ----- wiring -----
-  $('btnFeed').onclick = () => show('bag');
-  $('btnRest').onclick = () => show('bag');
-  $('btnBag').onclick = () => show('bag');
+  $('btnFeed').onclick = () => openBag('food');
+  $('btnRest').onclick = () => openBag('energy');
+  $('btnBag').onclick = () => openBag(null);
+  $('pet').onpointerdown = petHer;
   document.querySelectorAll('[data-settings]').forEach((b) => {
     b.onclick = () => {
       settingsReturn = document.querySelector('.screen.on')?.id === 's-login' ? 'login' : 'home';
@@ -998,7 +1020,6 @@ const Game = (() => {
     };
   });
   $('btnSettingsBack').onclick = () => show(settingsReturn);
-  $('btnCheer').onclick = () => care('joy', 30);
   $('btnTrain').onclick = () => show('trainMenu');
   $('btnMinis').onclick = () => show('minis');
   document.querySelectorAll('[data-home]').forEach((b) => { b.onclick = () => show('home'); });
