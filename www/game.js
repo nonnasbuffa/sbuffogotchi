@@ -905,8 +905,9 @@ const Game = (() => {
         if (g.fall <= 0) this.hurt(g);
         return;
       }
-      const dx = (g.held.right ? 1 : 0) - (g.held.left ? 1 : 0);
-      const dy = (g.held.down ? 1 : 0) - (g.held.up ? 1 : 0);
+      // With both directions held, the one pressed last wins, so a stuck key can never block the other way.
+      const dx = g.held.right && g.held.left ? (g.lastX === 'left' ? -1 : 1) : (g.held.right ? 1 : 0) - (g.held.left ? 1 : 0);
+      const dy = g.held.down && g.held.up ? (g.lastY === 'up' ? -1 : 1) : (g.held.down ? 1 : 0) - (g.held.up ? 1 : 0);
       if (dx || dy) {
         const scale = (dx && dy ? Math.SQRT1_2 : 1) * WALK_SPEED * dt;
         if (!footBlocked(g.x + dx * scale, g.y)) g.x += dx * scale;
@@ -1195,16 +1196,22 @@ const Game = (() => {
   document.querySelectorAll('[data-home]').forEach((b) => { b.onclick = () => show('home'); });
   $('btnMiniQuit').onclick = () => { stopMini(); show('minis'); };
   const KEY_DIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' };
+  const KEY_NAMES = { arrowup: 'up', arrowdown: 'down', arrowleft: 'left', arrowright: 'right', w: 'up', s: 'down', a: 'left', d: 'right' };
+  const keyDir = (e) => KEY_DIRS[e.code] || KEY_NAMES[String(e.key).toLowerCase()];
+  const holdDir = (dir) => {
+    mini.held[dir] = true;
+    if (dir === 'left' || dir === 'right') mini.lastX = dir; else mini.lastY = dir;
+  };
   const parkourPress = () => { if (mini?.pad) mini.press(mini); };
   window.addEventListener('keydown', (e) => {
     if (!mini?.pad) return;
-    if (KEY_DIRS[e.code]) { mini.held[KEY_DIRS[e.code]] = true; if (mini.box && !e.repeat) parkourPress(); e.preventDefault(); }
+    if (keyDir(e)) { if (!e.repeat) holdDir(keyDir(e)); else mini.held[keyDir(e)] = true; if (mini.box && !e.repeat) parkourPress(); e.preventDefault(); }
     if (e.code === 'Space' || e.code === 'KeyZ' || e.code === 'Enter') { if (!e.repeat) parkourPress(); e.preventDefault(); }
   });
-  window.addEventListener('keyup', (e) => { if (mini?.pad && KEY_DIRS[e.code]) mini.held[KEY_DIRS[e.code]] = false; });
+  window.addEventListener('keyup', (e) => { if (mini?.pad && keyDir(e)) mini.held[keyDir(e)] = false; });
   window.addEventListener('blur', () => { if (mini?.pad) mini.held = {}; });
   document.querySelectorAll('[data-dir]').forEach((b) => {
-    const set = (on) => (e) => { e.preventDefault(); if (mini?.pad) { mini.held[b.dataset.dir] = on; if (on && mini.box) parkourPress(); } };
+    const set = (on) => (e) => { e.preventDefault(); if (mini?.pad) { if (on) holdDir(b.dataset.dir); else mini.held[b.dataset.dir] = false; if (on && mini.box) parkourPress(); } };
     b.onpointerdown = set(true); b.onpointerup = set(false); b.onpointerleave = set(false); b.onpointercancel = set(false);
   });
   $('btnJump').onpointerdown = (e) => { e.preventDefault(); parkourPress(); };
