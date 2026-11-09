@@ -60,6 +60,8 @@ button .ic{margin-right:5px}.stats{display:flex;justify-content:center;gap:22px;
 #bagList{gap:5px}#bagList .bossRow{grid-template-columns:48px 1fr 84px;gap:8px;padding:2px 8px}#bagList .bossRow img{width:48px;height:48px}#bagList .bossRow button{min-height:38px;padding:4px}#bagList .bossRow.empty img{opacity:.4}#bagList .bossRow.rare{grid-template-columns:48px 1fr;border-color:#78d2f5}
 .deadStage{height:150px;display:flex;justify-content:center;align-items:flex-end;filter:grayscale(1) brightness(.75)}#deadPet{transform:scale(2.6)}#btnRevive img{vertical-align:-6px}
 #pet{cursor:pointer;touch-action:manipulation}.say{pointer-events:none;z-index:1}.heart{position:absolute;left:50%;top:35%;color:var(--red);font-weight:bold;font-size:28px;pointer-events:none;animation:hitNum .6s forwards}
+#padControls{display:none;grid-template-columns:1fr 104px;gap:10px;touch-action:none}#s-mini.pad #padControls{display:grid}#s-mini.pad{gap:6px}
+#s-mini.pad #miniCanvas{height:min(100dvh - 300px,(min(100vw,480px) - 32px)*1.375)}.dpad{display:grid;grid-template-columns:repeat(3,56px);grid-template-rows:repeat(2,50px);gap:4px;justify-content:center}.dpad button{min-height:0;padding:0;touch-action:none}#btnJump{touch-action:none}
 .toast{z-index:30;position:fixed;left:16px;right:16px;bottom:24px;max-width:448px;margin:auto;background:#000c;border:2px solid var(--gold);padding:10px;text-align:center;font-weight:bold;pointer-events:none;opacity:0;transition:opacity .2s}.toast.on{opacity:1}
 </style>
 </head>
@@ -138,6 +140,10 @@ button .ic{margin-right:5px}.stats{display:flex;justify-content:center;gap:22px;
     <h2 id="miniTitle"></h2>
     <p class="center" id="miniInfo"></p>
     <canvas id="miniCanvas" width="320" height="440"></canvas>
+    <div id="padControls">
+      <div class="dpad"><button data-dir="up" style="grid-area:1/2">▲</button><button data-dir="left" style="grid-area:2/1">◀</button><button data-dir="down" style="grid-area:2/2">▼</button><button data-dir="right" style="grid-area:2/3">▶</button></div>
+      <button class="main" id="btnJump" data-i18n="jumpBtn"></button>
+    </div>
     <button id="btnMiniQuit" data-i18n="quit"></button>
   </section>
 

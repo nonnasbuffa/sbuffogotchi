@@ -655,6 +655,7 @@ const Game = (() => {
   const ART = {
     pizza: art('sprites/pizza.png'), rice: art('sprites/rice.png'),
     bowl: art('sprites/poke_bowl.png'), broccoli: art('sprites/boss_broccoli.png'),
+    walker: art('sprites/walker.png'), carrot: art('sprites/boss_carrot.png'), sprout: art('sprites/boss_sprout.png'),
   };
   let mini = null;
   function startMini(title, game) {
@@ -663,6 +664,7 @@ const Game = (() => {
     if (!tired) payEnergy(MINI_COST);
     $('miniTitle').textContent = t(title);
     mini = { ...game, tired, pointerX: MINI_W / 2, raf: 0, last: performance.now() };
+    $('s-mini').classList.toggle('pad', !!game.pad);
     mini.begin(mini);
     show('mini');
     mini.raf = requestAnimationFrame(miniLoop);
@@ -814,6 +816,173 @@ const Game = (() => {
     },
   };
 
+  // ----- Garden Parkour -----
+  // # hedge, . path, _ gap (jump it), s timed spikes, C checkpoint, V patrolling vegetable, G goal, P start.
+  const PARKOUR_MAP = [
+    '##########',
+    '###.GG.###',
+    '###....###',
+    '#________#',
+    '#........#',
+    '#.ss.ss.s#',
+    '#........#',
+    '####..####',
+    '#V.......#',
+    '#........#',
+    '#..####..#',
+    '#.......V#',
+    '#___..___#',
+    '#___..___#',
+    '#...CC...#',
+    '#........#',
+    '#________#',
+    '#........#',
+    '##.####.##',
+    '#V.......#',
+    '#.ssssss.#',
+    '#........#',
+    '####..####',
+    '#........#',
+    '#__####__#',
+    '#........#',
+    '#...CC...#',
+    '#.......V#',
+    '#________#',
+    '#........#',
+    '#...P....#',
+    '##########',
+  ];
+  const TILE = 32;
+  const WALK_SPEED = 120;
+  const JUMP_TIME = 0.5;
+  const PARKOUR_HEARTS = 5;
+  const tileAt = (x, y) => (PARKOUR_MAP[Math.floor(y / TILE)] || '#')[Math.floor(x / TILE)] || '#';
+  const footBlocked = (x, y) => [[-7, -4], [7, -4], [-7, 4], [7, 4]].some(([a, b]) => tileAt(x + a, y + b) === '#');
+  const spikesUp = (time, x, y) => (time + (Math.floor(x / TILE) + Math.floor(y / TILE)) * 0.25) % 1.6 < 0.7;
+  const GARDEN_PARKOUR = {
+    pad: true,
+    begin(g) {
+      g.held = {}; g.time = 0; g.hearts = PARKOUR_HEARTS; g.jump = 0; g.fall = 0; g.safe = 0; g.facing = 'up'; g.walked = 0; g.flip = false;
+      g.foes = [];
+      PARKOUR_MAP.forEach((row, y) => [...row].forEach((c, x) => {
+        const at = { x: x * TILE + 16, y: y * TILE + 16 };
+        if (c === 'P') g.spawn = at;
+        if (c === 'V') g.foes.push({ ...at, dir: 1, art: g.foes.length % 2 ? 'carrot' : 'sprout' });
+      }));
+      g.x = g.spawn.x; g.y = g.spawn.y;
+      g.box = t('parkourIntro'); g.boxTime = 0;
+      this.info(g);
+    },
+    info(g) { $('miniInfo').textContent = `${'♥'.repeat(g.hearts)} ${t('parkourInfo', { l: g.hearts })}`; },
+    press(g) {
+      if (g.box) {
+        // The first press finishes the typing; the next one closes the box.
+        if (g.boxTime * 30 < g.box.length) g.boxTime = g.box.length / 30; else g.box = null;
+        return;
+      }
+      if (g.jump <= 0 && g.fall <= 0) g.jump = JUMP_TIME;
+    },
+    hurt(g) {
+      g.hearts -= 1;
+      g.fall = 0; g.jump = 0; g.safe = 1.2;
+      g.x = g.spawn.x; g.y = g.spawn.y;
+      this.info(g);
+      if (g.hearts <= 0) finishMini(4, 4, t('parkourLose'), 0);
+    },
+    update(g, dt) {
+      if (g.box) {
+        g.boxTime += dt;
+        return;
+      }
+      g.time += dt;
+      g.safe = Math.max(0, g.safe - dt);
+      for (const f of g.foes) {
+        f.x += f.dir * 85 * dt;
+        if (tileAt(f.x + f.dir * 14, f.y) === '#') f.dir = -f.dir;
+      }
+      if (g.fall > 0) {
+        g.fall -= dt;
+        if (g.fall <= 0) this.hurt(g);
+        return;
+      }
+      const dx = (g.held.right ? 1 : 0) - (g.held.left ? 1 : 0);
+      const dy = (g.held.down ? 1 : 0) - (g.held.up ? 1 : 0);
+      if (dx || dy) {
+        const scale = (dx && dy ? Math.SQRT1_2 : 1) * WALK_SPEED * dt;
+        if (!footBlocked(g.x + dx * scale, g.y)) g.x += dx * scale;
+        if (!footBlocked(g.x, g.y + dy * scale)) g.y += dy * scale;
+        g.walked += scale;
+        // Up and down win the facing, except when walking purely sideways.
+        if (dy) g.facing = dy < 0 ? 'up' : 'down';
+        else { g.facing = 'side'; g.flip = dx < 0; }
+      } else g.walked = 0;
+      const air = g.jump > 0;
+      if (air) g.jump -= dt;
+      else {
+        const here = tileAt(g.x, g.y);
+        if (here === '_') { g.fall = 0.4; return; }
+        if (here === 's' && !g.safe && spikesUp(g.time, g.x, g.y)) return this.hurt(g);
+        if (here === 'C') g.spawn = { x: Math.floor(g.x / TILE) * TILE + 16, y: Math.floor(g.y / TILE) * TILE + 16 };
+        if (here === 'G') return finishMini(15, 25, t('parkourWin'), 2);
+      }
+      if (!air && !g.safe && g.foes.some((f) => Math.hypot(f.x - g.x, f.y - g.y) < 22)) this.hurt(g);
+    },
+    draw(g, c) {
+      const camY = Math.max(0, Math.min(PARKOUR_MAP.length * TILE - MINI_H, g.y - MINI_H * 0.6));
+      c.fillStyle = '#231d33'; c.fillRect(0, 0, MINI_W, MINI_H);
+      c.save(); c.translate(0, -Math.round(camY));
+      PARKOUR_MAP.forEach((row, y) => [...row].forEach((ch, x) => {
+        const px = x * TILE, py = y * TILE;
+        if (py + TILE < camY || py > camY + MINI_H) return;
+        if (ch === '#') {
+          c.fillStyle = '#2f6b3f'; c.fillRect(px, py, TILE, TILE);
+          c.fillStyle = '#3f8a4f'; c.fillRect(px + 3, py + 3, 10, 8); c.fillRect(px + 17, py + 14, 11, 8);
+          return;
+        }
+        if (ch === '_') {
+          c.fillStyle = '#17111f'; c.fillRect(px, py, TILE, TILE);
+          c.fillStyle = '#3a2a22'; c.fillRect(px, py, TILE, 5);
+          return;
+        }
+        c.fillStyle = (x + y) % 2 ? '#d9bd8c' : '#cfb07d'; c.fillRect(px, py, TILE, TILE);
+        if (ch === 'C') { c.fillStyle = '#5fcf80'; c.fillRect(px + 6, py + 6, 20, 20); }
+        if (ch === 'G') { c.fillStyle = '#ffc857'; c.fillRect(px + 2, py + 2, 28, 28); }
+        if (ch === 's') {
+          const up = spikesUp(g.time, px, py);
+          c.fillStyle = up ? '#e8604c' : '#8f7a5a';
+          for (const [a, b] of [[6, 7], [20, 7], [13, 19]]) c.fillRect(px + a, py + b, 6, up ? 8 : 2);
+        }
+      }));
+      for (const f of g.foes) c.drawImage(ART[f.art], f.x - 16, f.y - 22, 32, 32);
+      const air = g.jump > 0 ? Math.sin((1 - g.jump / JUMP_TIME) * Math.PI) * 18 : 0;
+      c.fillStyle = '#0005'; c.fillRect(g.x - 9, g.y + 4, 18, 4);
+      const flicker = g.safe > 0 && Math.floor(g.safe * 10) % 2;
+      if (!flicker) {
+        const shrink = g.fall > 0 ? g.fall / 0.4 : 1;
+        const col = g.walked ? Math.floor(g.walked / 14) % 4 : 0;
+        const row = { down: 0, up: 1, side: 2 }[g.facing];
+        c.save();
+        c.translate(g.x, g.y + 6 - air);
+        c.scale(g.facing === 'side' && g.flip ? -shrink : shrink, shrink);
+        c.drawImage(ART.walker, col * 16, row * 22, 16, 22, -16, -44, 32, 44);
+        c.restore();
+      }
+      c.restore();
+      if (g.box) {
+        c.fillStyle = '#000'; c.fillRect(10, MINI_H - 110, MINI_W - 20, 100);
+        c.strokeStyle = '#f6eedd'; c.lineWidth = 4; c.strokeRect(12, MINI_H - 108, MINI_W - 24, 96);
+        c.fillStyle = '#f6eedd'; c.font = 'bold 16px "Courier New", monospace';
+        const shown = g.box.slice(0, Math.floor(g.boxTime * 30));
+        let line = '', y = MINI_H - 84;
+        for (const word of shown.split(' ')) {
+          if (c.measureText(`${line}${word}`).width > MINI_W - 48) { c.fillText(line, 24, y); y += 20; line = ''; }
+          line += `${word} `;
+        }
+        c.fillText(line, 24, y);
+      }
+    },
+  };
+
   const TRAINING_GAMES = [
     { key: 'riceWrap', about: 'riceWrapAbout', art: 'sprites/icons/rice.png', start: () => startTrain() },
     { key: 'whack', about: 'whackAbout', art: 'sprites/boss_broccoli.png', start: () => startWhack() },
@@ -821,6 +990,7 @@ const Game = (() => {
   ];
   const MINI_GAMES = [
     { key: 'pong', about: 'pongAbout', tiredOk: true, art: 'sprites/pizza.png', start: () => startMini('pong', PIZZA_PONG) },
+    { key: 'parkour', about: 'parkourAbout', tiredOk: true, art: 'sprites/icons/walker.png', start: () => startMini('parkour', GARDEN_PARKOUR) },
     { key: 'catch', about: 'catchAbout', tiredOk: true, art: 'sprites/icons/bowl.png', start: () => startMini('catch', RICE_CATCH) },
   ];
 
@@ -1024,7 +1194,21 @@ const Game = (() => {
   $('btnMinis').onclick = () => show('minis');
   document.querySelectorAll('[data-home]').forEach((b) => { b.onclick = () => show('home'); });
   $('btnMiniQuit').onclick = () => { stopMini(); show('minis'); };
-  $('miniCanvas').onpointerdown = miniPointer;
+  const KEY_DIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' };
+  const parkourPress = () => { if (mini?.pad) mini.press(mini); };
+  window.addEventListener('keydown', (e) => {
+    if (!mini?.pad) return;
+    if (KEY_DIRS[e.code]) { mini.held[KEY_DIRS[e.code]] = true; if (mini.box && !e.repeat) parkourPress(); e.preventDefault(); }
+    if (e.code === 'Space' || e.code === 'KeyZ' || e.code === 'Enter') { if (!e.repeat) parkourPress(); e.preventDefault(); }
+  });
+  window.addEventListener('keyup', (e) => { if (mini?.pad && KEY_DIRS[e.code]) mini.held[KEY_DIRS[e.code]] = false; });
+  window.addEventListener('blur', () => { if (mini?.pad) mini.held = {}; });
+  document.querySelectorAll('[data-dir]').forEach((b) => {
+    const set = (on) => (e) => { e.preventDefault(); if (mini?.pad) { mini.held[b.dataset.dir] = on; if (on && mini.box) parkourPress(); } };
+    b.onpointerdown = set(true); b.onpointerup = set(false); b.onpointerleave = set(false); b.onpointercancel = set(false);
+  });
+  $('btnJump').onpointerdown = (e) => { e.preventDefault(); parkourPress(); };
+  $('miniCanvas').onpointerdown = (e) => { miniPointer(e); if (mini?.pad && mini.box) parkourPress(); };
   $('miniCanvas').onpointermove = miniPointer;
   $('btnBoss').onclick = () => show('bosses');
   $('btnBossBack').onclick = () => show('home');
