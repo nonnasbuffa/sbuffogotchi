@@ -13,11 +13,11 @@ const Cloud = (() => {
   const configured = () => !!(CONFIG.apiKey && CONFIG.projectId);
   const email = (name) => `${name.trim().toLowerCase()}@players.sbuffogotchi.game`;
   const friendly = {
-    EMAIL_EXISTS: 'That username is taken.',
-    INVALID_LOGIN_CREDENTIALS: 'Wrong username or password.',
-    EMAIL_NOT_FOUND: 'Wrong username or password.',
-    INVALID_PASSWORD: 'Wrong username or password.',
-    INVALID_EMAIL: 'Usernames can use letters, numbers, dots and dashes.',
+    EMAIL_EXISTS: 'errTaken',
+    INVALID_LOGIN_CREDENTIALS: 'errWrong',
+    EMAIL_NOT_FOUND: 'errWrong',
+    INVALID_PASSWORD: 'errWrong',
+    INVALID_EMAIL: 'errEmail',
   };
 
   function remember(s) {
@@ -27,7 +27,7 @@ const Cloud = (() => {
   }
 
   async function auth(path, name, password) {
-    if (!configured()) throw new Error('Accounts are not switched on yet.');
+    if (!configured()) throw new Error(I18n.t('errOff'));
     const res = await fetch(`${authBase}/accounts:${path}?key=${CONFIG.apiKey}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: email(name), password, returnSecureToken: true }),
@@ -35,7 +35,7 @@ const Cloud = (() => {
     const data = await res.json();
     if (!res.ok) {
       const code = String(data.error?.message || '').split(' ')[0];
-      throw new Error(friendly[code] || (code.startsWith('WEAK_PASSWORD') ? 'Password needs 6+ characters.' : `Could not sign in (${code || res.status}). Try again.`));
+      throw new Error(friendly[code] ? I18n.t(friendly[code]) : code.startsWith('WEAK_PASSWORD') ? I18n.t('errWeak') : I18n.t('errGeneric', { code: code || res.status }));
     }
     remember({ uid: data.localId, name: name.trim(), token: data.idToken, refresh: data.refreshToken, expires: Date.now() + data.expiresIn * 1000 });
   }

@@ -1,8 +1,10 @@
 const Game = (() => {
+  const t = I18n.t;
   const SAVE_KEY = 'sbuffogotchi.save';
   const $ = (id) => document.getElementById(id);
   const clamp = (v, a = 0, b = 100) => Math.max(a, Math.min(b, v));
-  const DECAY_PER_HOUR = { food: 4, energy: 3, joy: 3 };
+  // She dies at 0 Food or 0 Energy, so a full bar lasts about two days of Food and four of Energy.
+  const DECAY_PER_HOUR = { food: 2, energy: 1, joy: 3 };
   const CARE_COOLDOWN = 60000;
   const BOSS_EVERY = 3;
   const ANIMS = {
@@ -12,26 +14,47 @@ const Game = (() => {
     battle: [600, 400, 300, 400],
   };
   const BOSSES = [
-    { name: 'Baron Broccoli', art: 'broccoli' },
-    { name: 'Sir Brussels Sprout', art: 'sprout' },
-    { name: 'Count Eggplant', art: 'eggplant' },
-    { name: 'General Carrot', art: 'carrot' },
+    { key: 'bossBroccoli', art: 'broccoli' },
+    { key: 'bossSprout', art: 'sprout' },
+    { key: 'bossEggplant', art: 'eggplant' },
+    { key: 'bossCarrot', art: 'carrot' },
   ];
 
+  // Food and energy now only come from items, so the daily rewards hand some out.
+  const ITEMS = {
+    pokebowl: { key: 'itemPokebowl', icon: 'sprites/icons/bowl.png', stat: 'food', amount: 30, weight: 2 },
+    pizza: { key: 'itemPizza', icon: 'sprites/pizza.png', stat: 'food', amount: 20, weight: 3 },
+    popsicle: { key: 'itemPopsicle', icon: 'sprites/icons/popsicle.png', stat: 'food', amount: 10, weight: 4 },
+    phone: { key: 'itemPhone', icon: 'sprites/icons/phone.png', stat: 'energy', amount: 15, weight: 3 },
+    monster: { key: 'itemMonster', icon: 'sprites/icons/monster.png', stat: 'energy', amount: 30, weight: 1.5 },
+    // Only ever found by beating bosses; see rollDiamond.
+    diamond: { key: 'itemDiamond', icon: 'sprites/icons/diamond.png', weight: 0 },
+  };
   const DAILY_REWARDS = [
-    { icon: 'star', label: '30 XP', xp: 30 },
-    { icon: 'bolt', label: '+50 Energy', energy: 50 },
-    { icon: 'dumbbell', label: '+1 Strength', str: 1 },
-    { icon: 'star', label: '60 XP', xp: 60 },
-    { icon: 'apple', label: 'Full refill', food: 100, energy: 100, joy: 100 },
-    { icon: 'dumbbell', label: '+2 Strength', str: 2 },
-    { icon: 'shield', label: '+1 Shield, 100 XP', shields: 1, xp: 100 },
+    { icon: 'star', xp: 30 },
+    { icon: 'phone', items: { phone: 2 } },
+    { icon: 'dumbbell', str: 1 },
+    { icon: 'star', xp: 60 },
+    { icon: 'bowl', items: { pokebowl: 1, monster: 1 } },
+    { icon: 'dumbbell', str: 2 },
+    { icon: 'shield', shields: 1, xp: 100 },
   ];
+  const dailyLabel = (r) => {
+    const parts = [];
+    if (r.shields) parts.push(`+${r.shields} ${t('shields')}`);
+    if (r.xp) parts.push(t('plusXp', { n: r.xp }));
+    if (r.str) parts.push(t('plusStr', { n: r.str }));
+    if (r.items) parts.push(itemsText(r.items));
+    return parts.join(', ');
+  };
   const GOLDEN_EVERY_MS = 10 * 60000;
   const GOLDEN_FADE_IN_MS = 2500;
   const GOLDEN_FADE_OUT_AT_MS = 10000;
   const GOLDEN_FADE_OUT_MS = 1500;
   const REMATCH_ENERGY = 10;
+  const DIAMOND_CHANCE_NEW_BOSS = 0.1;
+  const DIAMOND_CHANCE_REMATCH = 0.02;
+  const REVIVE_BARS = 50;
   const ATTACK_GAP_MS = 4000;
   const FIRST_HIT_MS = 700;
   const NEXT_HIT_MS = 800;
@@ -40,7 +63,8 @@ const Game = (() => {
   const bossFor = (n) => {
     const b = BOSSES[n % BOSSES.length];
     const loop = Math.floor(n / BOSSES.length);
-    return { ...b, name: loop ? `${b.name} ${loop + 1}` : b.name };
+    const name = t(b.key);
+    return { ...b, name: loop ? `${name} ${loop + 1}` : name };
   };
 
   const fresh = () => ({
@@ -49,6 +73,8 @@ const Game = (() => {
     streak: 0, lastDay: null, shields: 0,
     care: {}, tickAt: Date.now(), updatedAt: 0,
     rewardDay: 0, lastReward: -1, nextGolden: 0,
+    items: { pokebowl: 1, pizza: 1, popsicle: 1, phone: 1, monster: 1, diamond: 0 },
+    life: 0,
   });
 
   let S = fresh();
@@ -72,6 +98,9 @@ const Game = (() => {
   // Never let a stale device overwrite further progress.
   function merge(local, remote) {
     if (!remote) return local;
+    // After a death the new life always wins, so an old save can never bring back the last one.
+    const lifeLocal = local.life ?? 0, lifeRemote = remote.life ?? 0;
+    if (lifeLocal !== lifeRemote) return { ...fresh(), ...(lifeLocal > lifeRemote ? local : remote) };
     const winner = progress(remote) === progress(local)
       ? (remote.updatedAt > local.updatedAt ? remote : local)
       : (progress(remote) > progress(local) ? remote : local);
@@ -79,7 +108,8 @@ const Game = (() => {
     return { ...fresh(), ...winner, streak: better.streak, lastDay: better.lastDay, shields: better.shields,
       // A reward claimed on any device stays claimed everywhere.
       rewardDay: Math.max(local.rewardDay ?? 0, remote.rewardDay ?? 0),
-      lastReward: Math.max(local.lastReward ?? -1, remote.lastReward ?? -1) };
+      lastReward: Math.max(local.lastReward ?? -1, remote.lastReward ?? -1),
+      mortal: local.mortal || remote.mortal };
   }
 
   // ----- time, needs, streak -----
@@ -97,12 +127,12 @@ const Game = (() => {
     const today = dayNumber(Cloud.now());
     if (S.lastDay === today) return null;
     let msg;
-    if (S.lastDay === null || S.lastDay > today) { S.streak = 1; msg = 'Day 1 of your streak!'; }
-    else if (today - S.lastDay === 1) { S.streak += 1; msg = `${S.streak} day streak!`; }
+    if (S.lastDay === null || S.lastDay > today) { S.streak = 1; msg = t('day1'); }
+    else if (today - S.lastDay === 1) { S.streak += 1; msg = t('streakN', { n: S.streak }); }
     else if (S.shields >= today - S.lastDay - 1) {
-      S.shields -= today - S.lastDay - 1; S.streak += 1; msg = `Shield saved your streak! ${S.streak} days!`;
-    } else { S.streak = Math.max(1, Math.floor(S.streak / 2)); msg = `You were away. Streak is now ${S.streak}.`; }
-    if (S.streak % 7 === 0) { S.shields += 1; msg += ' +1 shield!'; }
+      S.shields -= today - S.lastDay - 1; S.streak += 1; msg = t('shieldSaved', { n: S.streak });
+    } else { S.streak = Math.max(1, Math.floor(S.streak / 2)); msg = t('streakLost', { n: S.streak }); }
+    if (S.streak % 7 === 0) { S.shields += 1; msg += ` ${t('plusShield')}`; }
     S.lastDay = today;
     return msg;
   }
@@ -113,7 +143,7 @@ const Game = (() => {
     S.xp += gain;
     let up = false;
     while (S.xp >= xpNeeded()) { S.xp -= xpNeeded(); S.level += 1; up = true; }
-    if (up) toast(`Level up! Now level ${S.level}`);
+    if (up) toast(t('levelUp', { n: S.level }));
     return gain;
   }
   const nextBossLevel = () => (S.bossWins + 1) * BOSS_EVERY;
@@ -145,12 +175,14 @@ const Game = (() => {
     if (name === 'bosses') renderBossList();
     if (name === 'trainMenu') renderGameMenu('trainList', TRAINING_GAMES, TRAIN_COST);
     if (name === 'minis') renderGameMenu('miniList', MINI_GAMES, MINI_COST);
+    if (name === 'bag') renderBag();
+    if (name === 'settings') renderSettings();
     if (name !== 'home') removeGolden();
   }
   let toastTimer;
   function toast(msg) {
     $('toast').textContent = msg; $('toast').classList.add('on');
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.remove('on'), 2400);
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.remove('on'), 3400);
   }
   function render() {
     tick();
@@ -160,22 +192,152 @@ const Game = (() => {
     for (const k of ['food', 'energy', 'joy']) $(`b-${k}`).style.width = `${S[k]}%`;
     $('str').textContent = S.str; $('wins').textContent = S.bossWins; $('shields').textContent = S.shields;
     const u = Cloud.user();
-    $('btnAccount').textContent = u ? u.name : 'Sign in';
+    $('btnAccount').textContent = u ? u.name : t('signIn');
     const lowest = Math.min(S.food, S.energy, S.joy);
-    $('say').textContent = lowest >= 25 ? '' : S.food === lowest ? "I'm hungry..." : S.energy === lowest ? "I'm so tired..." : 'I feel lonely...';
+    $('say').textContent = lowest >= 25 ? '' : S.food === lowest ? t(hasItemFor('food') ? 'hungry' : 'noFood') : S.energy === lowest ? t(hasItemFor('energy') ? 'tired' : 'noEnergy') : t('lonely');
     const need = nextBossLevel();
-    $('btnBossLabel').textContent = S.level >= need ? 'BOSS READY!' : 'Bosses';
-    $('btnTrain').disabled = S.energy < 10;
-    const now = Date.now();
-    for (const [id, k] of [['btnFeed', 'food'], ['btnRest', 'energy'], ['btnCheer', 'joy']]) {
-      $(id).disabled = now - (S.care[k] || 0) < CARE_COOLDOWN;
-    }
+    $('btnBossLabel').textContent = t(S.level >= need ? 'bossReady' : 'bosses');
+    $('btnTrain').disabled = S.energy <= 10;
+    $('btnCheer').disabled = Date.now() - (S.care.joy || 0) < CARE_COOLDOWN;
   }
   function care(k, amount) {
     S[k] = clamp(S[k] + amount); S.care[k] = Date.now();
     const gain = addXp(3);
-    save(); render(); toast(`+${gain} XP`);
+    save(); render(); toast(t('plusXp', { n: gain }));
     play($('pet'), 'happy', restingAnim());
+  }
+
+  // ----- items -----
+  const hasItemFor = (stat) => Object.keys(ITEMS).some((id) => ITEMS[id].stat === stat && S.items[id] > 0);
+  function rollDiamond(found, chance) {
+    if (Math.random() < chance) { found.diamond = 1; addItems({ diamond: 1 }); }
+    return found;
+  }
+  function itemsText(items) {
+    return Object.entries(items).map(([id, n]) => `+${n} ${t(ITEMS[id].key)}`).join(', ');
+  }
+  function addItems(items) {
+    for (const [id, n] of Object.entries(items)) S.items[id] = (S.items[id] || 0) + n;
+  }
+  // Rolls n random items from the drop table, adds them to the inventory and returns them.
+  function dropItems(n) {
+    const ids = Object.keys(ITEMS).filter((id) => ITEMS[id].weight > 0);
+    const total = ids.reduce((sum, id) => sum + ITEMS[id].weight, 0);
+    const found = {};
+    for (let i = 0; i < n; i++) {
+      let roll = Math.random() * total;
+      const id = ids.find((key) => (roll -= ITEMS[key].weight) < 0) || ids[0];
+      found[id] = (found[id] || 0) + 1;
+    }
+    addItems(found);
+    return found;
+  }
+  function renderBag() {
+    tick();
+    $('bagStatus').textContent = `${t('food')} ${Math.round(S.food)}% · ${t('energy')} ${Math.round(S.energy)}%`;
+    const list = $('bagList');
+    list.textContent = '';
+    for (const [stat, heading] of [['food', 'foodSection'], ['energy', 'energySection']]) {
+      const head = document.createElement('div');
+      head.className = 'bagHead'; head.textContent = t(heading);
+      list.append(head);
+      for (const id of Object.keys(ITEMS).filter((key) => ITEMS[key].stat === stat)) {
+        const item = ITEMS[id];
+        const count = S.items[id] || 0;
+        const row = document.createElement('div');
+        row.className = `bossRow${count ? '' : ' empty'}`;
+        const img = document.createElement('img');
+        img.src = item.icon; img.alt = '';
+        const text = document.createElement('div');
+        const title = document.createElement('b');
+        title.textContent = `${t(item.key)} x${count}`;
+        const about = document.createElement('span');
+        about.className = 'dim';
+        about.textContent = t(stat === 'food' ? 'plusFood' : 'plusEnergy', { n: item.amount });
+        text.append(title, about);
+        const use = document.createElement('button');
+        use.textContent = t('use'); use.className = 'main';
+        use.disabled = !count || S[stat] >= 99;
+        use.onclick = () => useItem(id);
+        row.append(img, text, use);
+        list.append(row);
+      }
+    }
+    const head = document.createElement('div');
+    head.className = 'bagHead'; head.textContent = t('specialSection');
+    const row = document.createElement('div');
+    row.className = `bossRow rare${S.items.diamond ? '' : ' empty'}`;
+    const img = document.createElement('img');
+    img.src = ITEMS.diamond.icon; img.alt = '';
+    const text = document.createElement('div');
+    const title = document.createElement('b');
+    title.textContent = `${t('itemDiamond')} x${S.items.diamond || 0}`;
+    const about = document.createElement('span');
+    about.className = 'dim'; about.textContent = t('diamondAbout');
+    text.append(title, about);
+    row.append(img, text);
+    list.append(head, row);
+  }
+  function useItem(id) {
+    const item = ITEMS[id];
+    if (!(S.items[id] > 0)) return;
+    tick();
+    S.items[id] -= 1;
+    S[item.stat] = clamp(S[item.stat] + item.amount);
+    const xp = addXp(3);
+    save(); show('home');
+    play($('pet'), 'happy', restingAnim());
+    toast(`${t(item.stat === 'food' ? 'plusFood' : 'plusEnergy', { n: item.amount })} · ${t('plusXp', { n: xp })}`);
+  }
+
+  // ----- death -----
+  const isDead = () => S.food <= 0 || S.energy <= 0;
+  function openDeath() {
+    $('daily').classList.remove('on');
+    removeGolden();
+    const diamonds = S.items.diamond || 0;
+    $('deadWhy').textContent = t(S.food <= 0 ? 'deadFood' : 'deadEnergy');
+    $('deadLost').textContent = t('deadLost', { l: S.level, s: S.str, b: S.bossWins, k: S.streak });
+    $('deadHint').textContent = t(diamonds ? 'deadSave' : 'deadNone');
+    $('btnRevive').style.display = diamonds ? '' : 'none';
+    $('btnRevive').textContent = t('useDiamond', { n: diamonds });
+    play($('deadPet'), 'sad');
+    $('death').classList.add('on');
+  }
+  function reviveHer() {
+    if (!(S.items.diamond > 0) || !isDead()) return;
+    S.items.diamond -= 1;
+    S.food = Math.max(S.food, REVIVE_BARS);
+    S.energy = Math.max(S.energy, REVIVE_BARS);
+    S.tickAt = Date.now();
+    save(); sync();
+    $('death').classList.remove('on');
+    show('home'); play($('pet'), 'happy', restingAnim());
+    toast(t('revived'));
+  }
+  function startOver() {
+    if (S.items.diamond > 0 && !confirm(t('startOverConfirm'))) return;
+    // Today's daily reward stays claimed, so dying can't be used to collect it again.
+    S = { ...fresh(), life: (S.life || 0) + 1, lastReward: S.lastReward, mortal: true, nextGolden: Date.now() + GOLDEN_EVERY_MS };
+    const msg = checkIn();
+    save(); sync();
+    $('death').classList.remove('on');
+    show('home');
+    toast(`${t('restarted')} ${msg || ''}`);
+  }
+
+  // ----- settings -----
+  let settingsReturn = 'home';
+  function renderSettings() {
+    const list = $('langList');
+    list.textContent = '';
+    for (const [code, name] of Object.entries(I18n.langs)) {
+      const b = document.createElement('button');
+      b.textContent = name;
+      if (code === I18n.current()) b.className = 'picked';
+      b.onclick = () => { I18n.set(code); renderSettings(); };
+      list.append(b);
+    }
   }
 
   // ----- daily reward -----
@@ -190,9 +352,9 @@ const Game = (() => {
       const img = document.createElement('img');
       img.className = 'ic'; img.src = `sprites/icons/${r.icon}.png`; img.alt = '';
       const day = document.createElement('b');
-      day.textContent = `Day ${i + 1}`;
+      day.textContent = t('dayN', { n: i + 1 });
       const label = document.createElement('span');
-      label.textContent = r.label;
+      label.textContent = dailyLabel(r);
       tile.append(img, day, label);
       days.append(tile);
     });
@@ -201,9 +363,7 @@ const Game = (() => {
   function claimDaily() {
     if (!dailyReady()) { $('daily').classList.remove('on'); return; }
     const r = DAILY_REWARDS[S.rewardDay % DAILY_REWARDS.length];
-    if (r.food) S.food = clamp(S.food + r.food);
-    if (r.energy) S.energy = clamp(S.energy + r.energy);
-    if (r.joy) S.joy = clamp(S.joy + r.joy);
+    if (r.items) addItems(r.items);
     if (r.str) S.str += r.str;
     if (r.shields) S.shields += r.shields;
     if (r.xp) addXp(r.xp);
@@ -212,7 +372,7 @@ const Game = (() => {
     save();
     $('daily').classList.remove('on');
     render(); play($('pet'), 'happy', restingAnim());
-    toast(`Daily reward: ${r.label}!`);
+    toast(t('dailyToast', { label: dailyLabel(r) }));
   }
 
   // ----- golden poke bowl -----
@@ -226,7 +386,7 @@ const Game = (() => {
     S.nextGolden = Date.now() + GOLDEN_EVERY_MS;
     save();
     const el = document.createElement('img');
-    el.className = 'golden'; el.src = 'sprites/golden_bowl.png'; el.alt = 'Golden poke bowl';
+    el.className = 'golden'; el.src = 'sprites/golden_bowl.png'; el.alt = t('goldenAlt');
     el.style.left = `${8 + Math.random() * Math.max(0, innerWidth - 96)}px`;
     el.style.top = `${60 + Math.random() * Math.max(0, innerHeight - 136)}px`;
     const total = GOLDEN_FADE_OUT_AT_MS + GOLDEN_FADE_OUT_MS;
@@ -244,12 +404,16 @@ const Game = (() => {
   function collectGolden() {
     removeGolden();
     const xp = addXp(25);
-    S.joy = clamp(S.joy + 10); S.food = clamp(S.food + 10);
+    S.joy = clamp(S.joy + 10);
+    addItems({ pokebowl: 1 });
     save(); render(); play($('pet'), 'happy', restingAnim());
-    toast(`Golden poke bowl! +${xp} XP · +10 Joy · +10 Food`);
+    toast(`${t('goldenToast')} ${itemsText({ pokebowl: 1 })} · ${t('plusXp', { n: xp })} · ${t('plusJoy', { n: 10 })}`);
   }
   function homeTimers() {
-    if (!$('s-home').classList.contains('on') || $('daily').classList.contains('on')) return;
+    if (!$('s-home').classList.contains('on') || $('death').classList.contains('on')) return;
+    tick();
+    if (isDead()) return openDeath();
+    if ($('daily').classList.contains('on')) return;
     if (dailyReady()) return openDaily();
     if (!S.nextGolden) { S.nextGolden = Date.now() + GOLDEN_EVERY_MS; save(); return; }
     if (!golden && Date.now() >= S.nextGolden) spawnGolden();
@@ -287,7 +451,7 @@ const Game = (() => {
     nextTrainRound();
   }
   function nextTrainRound() {
-    $('trainInfo').textContent = `Round ${train.round + 1}/${TRAIN_ROUNDS} · Wrapped ${train.hits}`;
+    $('trainInfo').textContent = t('roundInfo', { a: train.round + 1, b: TRAIN_ROUNDS, n: train.hits });
     train.m = meter($('trainMeter'), { speed: 70 + train.round * 14, zone: Math.max(10, 24 - train.round * 1.6) });
     $('btnTrainTap').disabled = false;
   }
@@ -305,7 +469,7 @@ const Game = (() => {
     setTimeout(() => {
       $('trainMeter').classList.remove('hit'); leaves.classList.remove('shut');
       if (train.round < TRAIN_ROUNDS) return nextTrainRound();
-      finishTraining(train.hits, TRAIN_ROUNDS, 'wrapped');
+      finishTraining(train.hits, TRAIN_ROUNDS, t('wrapped'));
     }, 450);
   }
 
@@ -324,7 +488,7 @@ const Game = (() => {
     S.joy = clamp(S.joy + Math.round(part * 8));
     const xp = addXp(6 + Math.round(part * 8) * 3);
     save(); show('home'); play($('pet'), 'happy', restingAnim());
-    toast(`${hits}/${total} ${word} · +${strGain} Strength · +${xp} XP`);
+    toast(`${hits}/${total} ${word} · ${t('plusStr', { n: strGain })} · ${t('plusXp', { n: xp })}`);
   }
   function menuRow(list, game, cost) {
     const row = document.createElement('div');
@@ -333,13 +497,15 @@ const Game = (() => {
     img.src = game.art; img.alt = '';
     const text = document.createElement('div');
     const title = document.createElement('b');
-    title.textContent = game.name;
+    title.textContent = t(game.key);
     const about = document.createElement('span');
-    about.className = 'dim'; about.textContent = game.about;
+    about.className = 'dim'; about.textContent = t(game.about);
     text.append(title, about);
     const go = document.createElement('button');
-    go.textContent = 'Play'; go.className = 'main';
-    go.disabled = S.energy < cost;
+    // A tired player can still play minigames for free, so running out of energy is never a dead end.
+    const tired = S.energy <= cost;
+    go.textContent = t(tired && game.tiredOk ? 'playTired' : 'play'); go.className = 'main';
+    go.disabled = tired && !game.tiredOk;
     go.onclick = game.start;
     row.append(img, text, go);
     list.append(row);
@@ -369,14 +535,14 @@ const Game = (() => {
     whack.timer = setTimeout(whackPop, 500);
   }
   function whackInfo(note) {
-    $('whackInfo').textContent = note || `Whacked ${whack.hits}`;
+    $('whackInfo').textContent = note || t('whackInfo', { n: whack.hits });
   }
   function whackClear() {
     if (whack.cell >= 0) $('whackGrid').children[whack.cell].textContent = '';
     whack.cell = -1;
   }
   function whackPop() {
-    if (whack.pops >= WHACK_POPS) return finishTraining(whack.hits, whack.veggies, 'whacked');
+    if (whack.pops >= WHACK_POPS) return finishTraining(whack.hits, whack.veggies, t('whacked'));
     let cell;
     do { cell = Math.floor(Math.random() * 9); } while (cell === whack.last);
     whack.last = cell; whack.cell = cell; whack.pops += 1;
@@ -396,7 +562,7 @@ const Game = (() => {
     clearTimeout(whack.timer);
     if (whack.bowl) {
       whack.hits = Math.max(0, whack.hits - 1);
-      whackInfo('Not the poke bowl! -1');
+      whackInfo(t('whackBowl'));
     } else {
       whack.hits += 1;
       whackInfo();
@@ -435,12 +601,12 @@ const Game = (() => {
   function nextOrderRound() {
     order.seq.push(randomItem());
     order.at = 0; order.taking = false;
-    $('orderInfo').textContent = `Order ${order.round + 1}/${ORDER_ROUNDS}: watch!`;
+    $('orderInfo').textContent = t('orderWatch', { a: order.round + 1, b: ORDER_ROUNDS });
     const lit = Math.max(280, 460 - order.round * 30);
     order.seq.forEach((item, i) => setTimeout(() => flashPad(item, lit), 500 + i * (lit + 180)));
     setTimeout(() => {
       order.taking = true;
-      $('orderInfo').textContent = `Order ${order.round + 1}/${ORDER_ROUNDS}: your turn!`;
+      $('orderInfo').textContent = t('orderTurn', { a: order.round + 1, b: ORDER_ROUNDS });
     }, 500 + order.seq.length * (lit + 180));
   }
   function orderTap(i) {
@@ -448,16 +614,16 @@ const Game = (() => {
     flashPad(i, 130);
     if (i !== order.seq[order.at]) {
       order.taking = false;
-      $('orderInfo').textContent = 'Wrong ingredient!';
-      setTimeout(() => finishTraining(order.round, ORDER_ROUNDS, 'orders'), 800);
+      $('orderInfo').textContent = t('orderWrong');
+      setTimeout(() => finishTraining(order.round, ORDER_ROUNDS, t('orders')), 800);
       return;
     }
     order.at += 1;
     if (order.at < order.seq.length) return;
     order.taking = false;
     order.round += 1;
-    $('orderInfo').textContent = 'Order complete!';
-    if (order.round >= ORDER_ROUNDS) setTimeout(() => finishTraining(order.round, ORDER_ROUNDS, 'orders'), 600);
+    $('orderInfo').textContent = t('orderDone');
+    if (order.round >= ORDER_ROUNDS) setTimeout(() => finishTraining(order.round, ORDER_ROUNDS, t('orders')), 600);
     else setTimeout(nextOrderRound, 700);
   }
 
@@ -471,9 +637,11 @@ const Game = (() => {
   };
   let mini = null;
   function startMini(title, game) {
-    payEnergy(MINI_COST);
-    $('miniTitle').textContent = title;
-    mini = { ...game, pointerX: MINI_W / 2, raf: 0, last: performance.now() };
+    tick();
+    const tired = S.energy <= MINI_COST;
+    if (!tired) payEnergy(MINI_COST);
+    $('miniTitle').textContent = t(title);
+    mini = { ...game, tired, pointerX: MINI_W / 2, raf: 0, last: performance.now() };
     mini.begin(mini);
     show('mini');
     mini.raf = requestAnimationFrame(miniLoop);
@@ -493,12 +661,18 @@ const Game = (() => {
     if (mini) cancelAnimationFrame(mini.raf);
     mini = null;
   }
-  function finishMini(joy, baseXp, message) {
+  function finishMini(joy, baseXp, message, drops) {
+    const tired = mini.tired;
     stopMini();
-    S.joy = clamp(S.joy + joy);
-    const xp = addXp(baseXp);
+    const parts = [];
+    if (!tired) {
+      S.joy = clamp(S.joy + joy);
+      const xp = addXp(baseXp);
+      parts.push(t('plusJoy', { n: joy }), t('plusXp', { n: xp }));
+    }
+    if (drops) parts.push(itemsText(dropItems(drops)));
     save(); show('home'); play($('pet'), 'happy', restingAnim());
-    toast(`${message} +${joy} Joy · +${xp} XP`);
+    toast(`${message} ${parts.join(' · ')}`);
   }
   function miniPointer(e) {
     if (!mini) return;
@@ -538,7 +712,7 @@ const Game = (() => {
       g.you = 0; g.cpu = 0; g.px = MINI_W / 2; g.cx = MINI_W / 2;
       g.py = MINI_H - 30; g.cy = 30;
       pongServe(g, true);
-      $('miniInfo').textContent = 'You 0 - 0 CPU';
+      $('miniInfo').textContent = t('pongScore', { a: 0, b: 0 });
     },
     update(g, dt) {
       g.px = Math.max(PIZZA_R, Math.min(MINI_W - PIZZA_R, g.pointerX));
@@ -555,9 +729,9 @@ const Game = (() => {
       if (b.y < -12 || b.y > MINI_H + 12) {
         const youScored = b.y < 0;
         if (youScored) g.you += 1; else g.cpu += 1;
-        $('miniInfo').textContent = `You ${g.you} - ${g.cpu} CPU`;
-        if (g.you >= PONG_WIN) return finishMini(15, 20, 'You won Pizza Pong!');
-        if (g.cpu >= PONG_WIN) return finishMini(5, 5, 'The CPU won Pizza Pong.');
+        $('miniInfo').textContent = t('pongScore', { a: g.you, b: g.cpu });
+        if (g.you >= PONG_WIN) return finishMini(15, 20, t('pongWin'), 2);
+        if (g.cpu >= PONG_WIN) return finishMini(5, 5, t('pongLose'), Math.random() < 0.5 ? 1 : 0);
         pongServe(g, !youScored);
       }
     },
@@ -585,12 +759,12 @@ const Game = (() => {
       this.info(g);
     },
     info(g) {
-      $('miniInfo').textContent = `Rice ${g.score} · Lives ${g.lives} · ${Math.ceil(g.time)}s`;
+      $('miniInfo').textContent = t('catchInfo', { n: g.score, l: g.lives, s: Math.ceil(g.time) });
     },
     end(g) {
       const joy = Math.min(15, Math.floor(g.score / 2));
       const xp = Math.min(25, g.score);
-      finishMini(joy, xp, `You caught ${g.score} rice!`);
+      finishMini(joy, xp, t('catchDone', { n: g.score }), Math.min(3, Math.floor(g.score / 12)));
     },
     update(g, dt) {
       g.time -= dt;
@@ -620,13 +794,13 @@ const Game = (() => {
   };
 
   const TRAINING_GAMES = [
-    { name: 'Rice Wrap', about: 'Tap when the rice is between the leaves.', art: 'sprites/icons/rice.png', start: () => startTrain() },
-    { name: 'Veggie Whack', about: 'Tap the vegetables, not the bowls.', art: 'sprites/boss_broccoli.png', start: () => startWhack() },
-    { name: 'Order Up', about: 'Remember the order of the ingredients.', art: 'sprites/icons/salmon.png', start: () => startOrder() },
+    { key: 'riceWrap', about: 'riceWrapAbout', art: 'sprites/icons/rice.png', start: () => startTrain() },
+    { key: 'whack', about: 'whackAbout', art: 'sprites/boss_broccoli.png', start: () => startWhack() },
+    { key: 'order', about: 'orderAbout', art: 'sprites/icons/salmon.png', start: () => startOrder() },
   ];
   const MINI_GAMES = [
-    { name: 'Pizza Pong', about: 'Rally the rice with your pizza. First to 5.', art: 'sprites/pizza.png', start: () => startMini('Pizza Pong', PIZZA_PONG) },
-    { name: 'Rice Catch', about: 'Catch the rice, dodge the broccoli.', art: 'sprites/icons/bowl.png', start: () => startMini('Rice Catch', RICE_CATCH) },
+    { key: 'pong', about: 'pongAbout', tiredOk: true, art: 'sprites/pizza.png', start: () => startMini('pong', PIZZA_PONG) },
+    { key: 'catch', about: 'catchAbout', tiredOk: true, art: 'sprites/icons/bowl.png', start: () => startMini('catch', RICE_CATCH) },
   ];
 
   // ----- boss -----
@@ -650,14 +824,14 @@ const Game = (() => {
       title.textContent = known ? b.name : '???';
       const status = document.createElement('span');
       status.className = 'dim';
-      status.textContent = beaten ? 'Beaten' : `Level ${(n + 1) * BOSS_EVERY}`;
+      status.textContent = beaten ? t('beaten') : t('levelN', { n: (n + 1) * BOSS_EVERY });
       text.append(title, status);
       const go = document.createElement('button');
       if (beaten) {
-        go.textContent = 'Rematch';
-        go.disabled = S.energy < REMATCH_ENERGY;
+        go.textContent = t('rematch');
+        go.disabled = S.energy <= REMATCH_ENERGY;
       } else {
-        go.textContent = unlocked ? 'FIGHT!' : 'Locked';
+        go.textContent = t(unlocked ? 'fightBtn' : 'locked');
         go.disabled = !unlocked;
         if (unlocked) go.className = 'boss';
       }
@@ -683,7 +857,7 @@ const Game = (() => {
     $('bossArt').src = `sprites/boss_${b.art}.png`;
     $('bowl').classList.remove('on');
     setFightButton();
-    $('bossInfo').textContent = 'Spam to attack!';
+    $('bossInfo').textContent = t('spam');
     show('boss'); play($('fightPet'), 'battle');
     renderFight(); queueBossAttack();
   }
@@ -693,7 +867,7 @@ const Game = (() => {
   }
   function setFightButton() {
     const eating = fight.phase === 'bowl';
-    $('btnBossTap').textContent = eating ? 'EAT!' : 'ATTACK!';
+    $('btnBossTap').textContent = t(eating ? 'eatBtn' : 'attackBtn');
     $('btnBossTap').className = eating ? 'main' : 'boss';
   }
   function queueBossAttack() {
@@ -705,7 +879,7 @@ const Game = (() => {
     $('bowl').style.backgroundPositionX = '0';
     $('bowl').classList.add('on');
     setFightButton();
-    $('bossInfo').textContent = `${fight.b.name} is attacking! Spam to eat the poke bowl!`;
+    $('bossInfo').textContent = t('attacking', { name: fight.b.name });
     fight.timer = setTimeout(bossStrike, FIRST_HIT_MS);
   }
   function bossStrike() {
@@ -726,10 +900,10 @@ const Game = (() => {
       $('bowl').style.backgroundPositionX = '100%';
       setTimeout(() => $('bowl').classList.remove('on'), 300);
       play($('fightPet'), 'happy', 'battle');
-      $('bossInfo').textContent = fight.hitsLeft ? `Yum! That blocked ${fight.hitsLeft} more hit${fight.hitsLeft > 1 ? 's' : ''}!` : 'Yum! She finished the bowl.';
+      $('bossInfo').textContent = fight.hitsLeft ? t('yumBlocked', { n: fight.hitsLeft }) : t('yumDone');
     } else {
       $('bowl').classList.remove('on');
-      $('bossInfo').textContent = 'Spam to attack!';
+      $('bossInfo').textContent = t('spam');
     }
     queueBossAttack();
   }
@@ -760,18 +934,22 @@ const Game = (() => {
     if (fight.rematch) {
       if (won) { S.str += 1; S.joy = clamp(S.joy + 5); }
       const xp = addXp(won ? 20 : 4);
+      const found = won ? rollDiamond(dropItems(1), DIAMOND_CHANCE_REMATCH) : null;
       save(); show('home'); play($('pet'), won ? 'happy' : 'sad', restingAnim());
-      toast(won ? `${fight.b.name} beaten again! +1 Strength · +${xp} XP` : `${fight.b.name} won the rematch. +${xp} XP`);
+      toast(won
+        ? `${t('beatenAgain', { name: fight.b.name })} ${itemsText(found)} · ${t('plusStr', { n: 1 })} · ${t('plusXp', { n: xp })}`
+        : `${t('rematchLost', { name: fight.b.name })} ${t('plusXp', { n: xp })}`);
     } else if (won) {
       S.bossWins += 1; S.str += 3; S.joy = clamp(S.joy + 25);
       const xp = addXp(60);
+      const found = rollDiamond(dropItems(3), DIAMOND_CHANCE_NEW_BOSS);
       save(); show('home'); play($('pet'), 'happy', restingAnim());
-      toast(`${fight.b.name} defeated! +3 Strength · +${xp} XP`);
+      toast(`${t('defeated', { name: fight.b.name })} ${itemsText(found)} · ${t('plusStr', { n: 3 })} · ${t('plusXp', { n: xp })}`);
     } else {
       S.joy = clamp(S.joy - 10);
       const xp = addXp(8);
       save(); show('home'); play($('pet'), 'sad', restingAnim());
-      toast(`She lost this time. Train and try again! +${xp} XP`);
+      toast(`${t('lost')} ${t('plusXp', { n: xp })}`);
     }
   }
 
@@ -779,7 +957,14 @@ const Game = (() => {
   async function enterGame() {
     S = loadLocal();
     if (Cloud.user()) {
-      try { S = merge(S, await Cloud.pull()); } catch { toast('Offline: will sync later'); }
+      try { S = merge(S, await Cloud.pull()); } catch { toast(t('offlineLater')); }
+    }
+    // Saves from before dying existed get one top-up, so the update itself can't kill her.
+    if (!S.mortal) {
+      S.mortal = true;
+      S.food = Math.max(S.food, REVIVE_BARS);
+      S.energy = Math.max(S.energy, REVIVE_BARS);
+      S.tickAt = Date.now();
     }
     tick();
     const msg = checkIn();
@@ -789,10 +974,10 @@ const Game = (() => {
   }
   async function authAction(kind) {
     if (!$('user').value.trim() || !$('pass').value) {
-      $('loginMsg').textContent = 'Type a username and password first.';
+      $('loginMsg').textContent = t('missingCreds');
       return;
     }
-    $('loginMsg').textContent = 'Connecting...';
+    $('loginMsg').textContent = t('connecting');
     try {
       await Cloud[kind]($('user').value, $('pass').value);
       $('loginMsg').textContent = '';
@@ -803,8 +988,16 @@ const Game = (() => {
   }
 
   // ----- wiring -----
-  $('btnFeed').onclick = () => care('food', 30);
-  $('btnRest').onclick = () => care('energy', 30);
+  $('btnFeed').onclick = () => show('bag');
+  $('btnRest').onclick = () => show('bag');
+  $('btnBag').onclick = () => show('bag');
+  document.querySelectorAll('[data-settings]').forEach((b) => {
+    b.onclick = () => {
+      settingsReturn = document.querySelector('.screen.on')?.id === 's-login' ? 'login' : 'home';
+      show('settings');
+    };
+  });
+  $('btnSettingsBack').onclick = () => show(settingsReturn);
   $('btnCheer').onclick = () => care('joy', 30);
   $('btnTrain').onclick = () => show('trainMenu');
   $('btnMinis').onclick = () => show('minis');
@@ -819,12 +1012,14 @@ const Game = (() => {
   $('btnBossTap').onpointerdown = bossTap;
   document.querySelector('.fight').onpointerdown = bossTap;
   $('btnClaim').onclick = claimDaily;
+  $('btnRevive').onclick = reviveHer;
+  $('btnStartOver').onclick = startOver;
   $('btnLogin').onclick = () => authAction('login');
   $('btnSignup').onclick = () => authAction('signup');
   $('btnOffline').onclick = () => { localStorage.setItem('sbuffogotchi.guest', '1'); enterGame(); };
   $('btnAccount').onclick = async () => {
     if (Cloud.user()) {
-      if (!confirm('Log out of this device?')) return;
+      if (!confirm(t('logoutConfirm'))) return;
       await sync();
       Cloud.logout();
       localStorage.removeItem(SAVE_KEY);
@@ -837,6 +1032,7 @@ const Game = (() => {
   setInterval(homeTimers, 1000);
   setInterval(() => { if ($('s-home').classList.contains('on')) { render(); } }, 5000);
 
+  I18n.apply();
   if (Cloud.user() || localStorage.getItem('sbuffogotchi.guest')) enterGame(); else show('login');
 
   return { state: () => S, set: (patch) => { Object.assign(S, patch); save(); render(); }, checkIn, merge, xpNeeded, show, spawnGolden, mini: () => mini };
