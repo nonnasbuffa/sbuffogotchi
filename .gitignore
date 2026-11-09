@@ -6,3 +6,5 @@ android/local.properties
 build/
 Payload/
 *.ipa
+
+.firebase/

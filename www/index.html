@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Sbuffogotchi</title>
+<meta name="description" content="Raise your own pixel pal: keep your streak going, train with minigames and beat the vegetable bosses.">
+<meta name="theme-color" content="#231d33">
+<link rel="icon" type="image/png" href="sprites/icons/bowl.png">
 <style>
 :root{--bg:#231d33;--panel:#352c4a;--line:#55486f;--text:#f6eedd;--dim:#b9aec9;--gold:#ffc857;--green:#5fcf80;--red:#e8604c;--blue:#62b6e8}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -48,7 +51,7 @@ button .ic{margin-right:5px}.stats{display:flex;justify-content:center;gap:22px;
 .menuList{display:flex;flex-direction:column;gap:8px}
 #whackGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.hole{aspect-ratio:1;background:#40304f;padding:0;min-height:0;display:flex;align-items:center;justify-content:center;touch-action:manipulation}.hole img{width:78%;image-rendering:pixelated;pointer-events:none}
 #orderPads{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pad{height:120px;padding:0;touch-action:manipulation}.pad img{width:72px;height:72px;image-rendering:pixelated;pointer-events:none}.pad.lit{background:var(--gold);border-color:var(--text)}
-#miniCanvas{width:100%;image-rendering:pixelated;touch-action:none;border:3px solid var(--line);display:block}
+#miniCanvas{height:min(100dvh - 180px,(min(100vw,480px) - 32px)*1.375);width:auto;aspect-ratio:320/440;margin:0 auto;image-rendering:pixelated;touch-action:none;border:3px solid var(--line);display:block}
 @media (max-height:760px){#s-home{gap:8px}#s-home .stage{height:230px}#pet{transform:scale(4)}}
 @media (max-height:640px){#s-home .stage{height:150px}#pet{transform:scale(2.5)}#s-home button{min-height:42px;padding:8px}}
 .toast{position:fixed;left:16px;right:16px;bottom:24px;max-width:448px;margin:auto;background:#000c;border:2px solid var(--gold);padding:10px;text-align:center;font-weight:bold;pointer-events:none;opacity:0;transition:opacity .2s}.toast.on{opacity:1}
