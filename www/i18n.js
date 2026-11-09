@@ -36,6 +36,7 @@ const I18n = (() => {
       deadSave: 'Use a diamond poke bowl to save her and keep everything.', deadNone: 'You have no diamond poke bowl. Everything resets.', useDiamond: 'Use diamond poke bowl (x{n})', startOver: 'Start over',
       startOverConfirm: 'Start over and lose everything, even with a diamond poke bowl?', revived: 'The diamond poke bowl saved her!', restarted: 'A new life begins.',
       parkour: 'Garden Parkour', parkourAbout: 'Walk, jump over the gaps and dodge the vegetables.', parkourInfo: 'Hearts {l}', parkourIntro: 'The veggies have taken over the garden. Reach the golden gate at the top!', parkourWin: 'You finished the parkour!', parkourLose: 'She ran out of hearts.', jumpBtn: 'JUMP',
+      music: 'Music', musicOn: 'On', musicOff: 'Off',
       language: 'Language',
     },
     es: {
@@ -71,6 +72,7 @@ const I18n = (() => {
       deadSave: 'Usa un poke bowl de diamante para salvarla y conservarlo todo.', deadNone: 'No tienes ningún poke bowl de diamante. Todo se reinicia.', useDiamond: 'Usar poke bowl de diamante (x{n})', startOver: 'Empezar de nuevo',
       startOverConfirm: '¿Empezar de nuevo y perderlo todo, aunque tengas un poke bowl de diamante?', revived: '¡El poke bowl de diamante la salvó!', restarted: 'Empieza una nueva vida.',
       parkour: 'Parkour del Huerto', parkourAbout: 'Camina, salta los huecos y esquiva las verduras.', parkourInfo: 'Corazones {l}', parkourIntro: 'Las verduras han tomado el huerto. ¡Llega a la puerta dorada de arriba!', parkourWin: '¡Terminaste el parkour!', parkourLose: 'Se quedó sin corazones.', jumpBtn: 'SALTA',
+      music: 'Música', musicOn: 'Sí', musicOff: 'No',
       language: 'Idioma',
     },
     it: {
@@ -106,6 +108,7 @@ const I18n = (() => {
       deadSave: 'Usa un pokè di diamante per salvarla e tenere tutto.', deadNone: 'Non hai un pokè di diamante. Si riparte da zero.', useDiamond: 'Usa pokè di diamante (x{n})', startOver: 'Ricomincia',
       startOverConfirm: 'Ricominciare e perdere tutto, anche con un pokè di diamante?', revived: 'Il pokè di diamante l\'ha salvata!', restarted: 'Inizia una nuova vita.',
       parkour: 'Parkour nell\'Orto', parkourAbout: 'Cammina, salta i buchi ed evita le verdure.', parkourInfo: 'Cuori {l}', parkourIntro: 'Le verdure hanno invaso l\'orto. Raggiungi il cancello dorato in cima!', parkourWin: 'Hai finito il parkour!', parkourLose: 'Ha finito i cuori.', jumpBtn: 'SALTA',
+      music: 'Musica', musicOn: 'Sì', musicOff: 'No',
       language: 'Lingua',
     },
   };

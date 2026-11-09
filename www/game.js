@@ -173,6 +173,7 @@ const Game = (() => {
   // ----- screens -----
   function show(name) {
     document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('on', s.id === `s-${name}`));
+    Music.play({ train: 'action', whack: 'action', order: 'action', mini: 'action', boss: 'boss' }[name] || 'home');
     if (name === 'home') { render(); play($('pet'), restingAnim()); }
     if (name === 'bosses') renderBossList();
     if (name === 'trainMenu') renderGameMenu('trainList', TRAINING_GAMES, TRAIN_COST);
@@ -323,6 +324,7 @@ const Game = (() => {
     $('btnRevive').style.display = diamonds ? '' : 'none';
     $('btnRevive').textContent = t('useDiamond', { n: diamonds });
     play($('deadPet'), 'sad');
+    Music.play(null);
     $('death').classList.add('on');
   }
   function reviveHer() {
@@ -359,6 +361,12 @@ const Game = (() => {
       b.onclick = () => { I18n.set(code); renderSettings(); };
       list.append(b);
     }
+    const music = document.createElement('button');
+    music.textContent = `${t('music')}: ${t(Music.enabled() ? 'musicOn' : 'musicOff')}`;
+    if (Music.enabled()) music.className = 'picked';
+    music.style.marginTop = '12px';
+    music.onclick = () => { Music.setEnabled(!Music.enabled()); renderSettings(); };
+    list.append(music);
   }
 
   // ----- daily reward -----
@@ -905,16 +913,18 @@ const Game = (() => {
         if (g.fall <= 0) this.hurt(g);
         return;
       }
-      // With both directions held, the one pressed last wins, so a stuck key can never block the other way.
-      const dx = g.held.right && g.held.left ? (g.lastX === 'left' ? -1 : 1) : (g.held.right ? 1 : 0) - (g.held.left ? 1 : 0);
-      const dy = g.held.down && g.held.up ? (g.lastY === 'up' ? -1 : 1) : (g.held.down ? 1 : 0) - (g.held.up ? 1 : 0);
-      if (dx || dy) {
-        const scale = (dx && dy ? Math.SQRT1_2 : 1) * WALK_SPEED * dt;
-        if (!footBlocked(g.x + dx * scale, g.y)) g.x += dx * scale;
-        if (!footBlocked(g.x, g.y + dy * scale)) g.y += dy * scale;
-        g.walked += scale;
-        // Up and down win the facing, except when walking purely sideways.
-        if (dy) g.facing = dy < 0 ? 'up' : 'down';
+      // The joystick wins when in use. With both keys of a pair held, the one pressed last wins.
+      let dx = g.held.right && g.held.left ? (g.lastX === 'left' ? -1 : 1) : (g.held.right ? 1 : 0) - (g.held.left ? 1 : 0);
+      let dy = g.held.down && g.held.up ? (g.lastY === 'up' ? -1 : 1) : (g.held.down ? 1 : 0) - (g.held.up ? 1 : 0);
+      if (g.stick) { dx = g.stick.x; dy = g.stick.y; }
+      const push = Math.hypot(dx, dy);
+      if (push > 1) { dx /= push; dy /= push; }
+      if (push) {
+        const step = WALK_SPEED * dt;
+        if (!footBlocked(g.x + dx * step, g.y)) g.x += dx * step;
+        if (!footBlocked(g.x, g.y + dy * step)) g.y += dy * step;
+        g.walked += step * Math.min(1, push);
+        if (Math.abs(dy) >= Math.abs(dx)) g.facing = dy < 0 ? 'up' : 'down';
         else { g.facing = 'side'; g.flip = dx < 0; }
       } else g.walked = 0;
       const air = g.jump > 0;
@@ -965,7 +975,7 @@ const Game = (() => {
         c.save();
         c.translate(g.x, g.y + 6 - air);
         c.scale(g.facing === 'side' && g.flip ? -shrink : shrink, shrink);
-        c.drawImage(ART.walker, col * 16, row * 22, 16, 22, -16, -44, 32, 44);
+        c.drawImage(ART.walker, col * 16, row * 22, 16, 22, -21, -36, 42, 36);
         c.restore();
       }
       c.restore();
@@ -1210,10 +1220,32 @@ const Game = (() => {
   });
   window.addEventListener('keyup', (e) => { if (mini?.pad && keyDir(e)) mini.held[keyDir(e)] = false; });
   window.addEventListener('blur', () => { if (mini?.pad) mini.held = {}; });
-  document.querySelectorAll('[data-dir]').forEach((b) => {
-    const set = (on) => (e) => { e.preventDefault(); if (mini?.pad) { if (on) holdDir(b.dataset.dir); else mini.held[b.dataset.dir] = false; if (on && mini.box) parkourPress(); } };
-    b.onpointerdown = set(true); b.onpointerup = set(false); b.onpointerleave = set(false); b.onpointercancel = set(false);
-  });
+  const STICK_RANGE = 40;
+  const STICK_DEAD = 0.2;
+  function moveStick(e) {
+    if (!mini?.pad) return;
+    const r = $('stick').getBoundingClientRect();
+    let x = (e.clientX - (r.left + r.width / 2)) / STICK_RANGE;
+    let y = (e.clientY - (r.top + r.height / 2)) / STICK_RANGE;
+    const len = Math.hypot(x, y);
+    if (len > 1) { x /= len; y /= len; }
+    $('knob').style.transform = `translate(${x * STICK_RANGE}px,${y * STICK_RANGE}px)`;
+    mini.stick = len < STICK_DEAD ? { x: 0, y: 0 } : { x, y };
+  }
+  function releaseStick() {
+    $('knob').style.transform = '';
+    if (mini) mini.stick = null;
+  }
+  $('stick').onpointerdown = (e) => {
+    e.preventDefault();
+    $('stick').setPointerCapture(e.pointerId);
+    if (mini?.pad && mini.box) parkourPress();
+    moveStick(e);
+  };
+  $('stick').onpointermove = (e) => { if ($('stick').hasPointerCapture(e.pointerId)) moveStick(e); };
+  $('stick').onpointerup = releaseStick;
+  $('stick').onpointercancel = releaseStick;
+  document.addEventListener('contextmenu', (e) => { if (!e.target.matches('input')) e.preventDefault(); });
   $('btnJump').onpointerdown = (e) => { e.preventDefault(); parkourPress(); };
   $('miniCanvas').onpointerdown = (e) => { miniPointer(e); if (mini?.pad && mini.box) parkourPress(); };
   $('miniCanvas').onpointermove = miniPointer;

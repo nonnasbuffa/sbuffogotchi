@@ -62,6 +62,8 @@ button .ic{margin-right:5px}.stats{display:flex;justify-content:center;gap:22px;
 #pet{cursor:pointer;touch-action:manipulation}.say{pointer-events:none;z-index:1}.heart{position:absolute;left:50%;top:35%;color:var(--red);font-weight:bold;font-size:28px;pointer-events:none;animation:hitNum .6s forwards}
 #padControls{display:none;grid-template-columns:1fr 104px;gap:10px;touch-action:none}#s-mini.pad #padControls{display:grid}#s-mini.pad{gap:6px}
 #s-mini.pad #miniCanvas{height:min(100dvh - 300px,(min(100vw,480px) - 32px)*1.375)}.dpad{display:grid;grid-template-columns:repeat(3,56px);grid-template-rows:repeat(2,50px);gap:4px;justify-content:center}.dpad button{min-height:0;padding:0;touch-action:none}#btnJump{touch-action:none}
+html,body,button,canvas,#app *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}input{-webkit-user-select:text;user-select:text}
+.stick{position:relative;width:104px;height:104px;border-radius:50%;background:#1a1527;border:3px solid var(--line);justify-self:center;touch-action:none;cursor:grab}.knob{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:var(--panel);border:3px solid var(--text);pointer-events:none}
 .toast{z-index:30;position:fixed;left:16px;right:16px;bottom:24px;max-width:448px;margin:auto;background:#000c;border:2px solid var(--gold);padding:10px;text-align:center;font-weight:bold;pointer-events:none;opacity:0;transition:opacity .2s}.toast.on{opacity:1}
 </style>
 </head>
@@ -141,7 +143,7 @@ button .ic{margin-right:5px}.stats{display:flex;justify-content:center;gap:22px;
     <p class="center" id="miniInfo"></p>
     <canvas id="miniCanvas" width="320" height="440"></canvas>
     <div id="padControls">
-      <div class="dpad"><button data-dir="up" style="grid-area:1/2">▲</button><button data-dir="left" style="grid-area:2/1">◀</button><button data-dir="down" style="grid-area:2/2">▼</button><button data-dir="right" style="grid-area:2/3">▶</button></div>
+      <div class="stick" id="stick"><div class="knob" id="knob"></div></div>
       <button class="main" id="btnJump" data-i18n="jumpBtn"></button>
     </div>
     <button id="btnMiniQuit" data-i18n="quit"></button>
@@ -187,6 +189,7 @@ button .ic{margin-right:5px}.stats{display:flex;justify-content:center;gap:22px;
 </div></div>
 <div class="toast" id="toast"></div>
 <script src="i18n.js"></script>
+<script src="music.js"></script>
 <script src="cloud.js"></script>
 <script src="game.js"></script>
 </body>
