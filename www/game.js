@@ -185,7 +185,6 @@ const Game = (() => {
     if (name === 'bag') renderBag();
     if (name === 'settings') renderSettings();
     if (name === 'friends') loadFriends();
-    if (name === 'admin') renderAdmin();
     if (name !== 'home') removeGolden();
   }
   let toastTimer;
@@ -378,7 +377,6 @@ const Game = (() => {
     music.style.marginTop = '12px';
     music.onclick = () => { Music.setEnabled(!Music.enabled()); renderSettings(); };
     list.append(music);
-    if (cheat('unlocked')) list.append(adminButton(t('adminTitle'), () => show('admin')));
   }
 
   // ----- daily reward -----
@@ -1372,7 +1370,8 @@ const Game = (() => {
     cheats().unlocked = true;
     saveCheats();
     $('friendName').value = '';
-    show('admin');
+    render();
+    openAdmin();
     toast(t('adminUnlocked'));
   }
   const ADMIN_TOGGLES = [
@@ -1387,7 +1386,7 @@ const Game = (() => {
     ['cheatShield', () => { S.shields += 1; }],
     ['cheatBoss', () => { S.level = Math.max(S.level, nextBossLevel()); }],
     ['cheatDaily', () => { S.lastReward = dayNumber(Cloud.now()) - 1; }],
-    ['cheatGolden', () => { show('home'); spawnGolden(); return true; }],
+    ['cheatGolden', () => { closeAdmin(); show('home'); spawnGolden(); return true; }],
   ];
   function adminButton(label, onclick, cls) {
     const b = document.createElement('button');
@@ -1396,9 +1395,21 @@ const Game = (() => {
     b.onclick = onclick;
     return b;
   }
+  // The panel is a window over the game, so changes show up behind it straight away.
+  function openAdmin() {
+    if (!cheat('unlocked')) return;
+    $('adminWin').style.left = ''; $('adminWin').style.top = '';
+    renderAdmin();
+    $('adminWin').classList.add('on');
+  }
+  function closeAdmin() {
+    $('adminWin').classList.remove('on');
+  }
   function renderAdmin() {
     const list = $('adminList');
+    const scroll = list.scrollTop;
     list.replaceChildren();
+    if ($('s-home').classList.contains('on')) render();
     for (const [name, key] of ADMIN_TOGGLES) {
       list.append(adminButton(`${t(key)}: ${t(cheats()[name] ? 'musicOn' : 'musicOff')}`, () => {
         cheats()[name] = !cheats()[name];
@@ -1434,9 +1445,26 @@ const Game = (() => {
     list.append(adminButton(t('cheatLock'), () => {
       S.cheats = {};
       saveCheats();
-      show('home');
+      closeAdmin();
+      render();
     }, 'boss'));
+    list.scrollTop = scroll;
   }
+  // On computers the window can be dragged around by its title bar.
+  $('adminDrag').onpointerdown = (e) => {
+    if (e.target.closest('button')) return;
+    const win = $('adminWin');
+    const box = win.getBoundingClientRect();
+    const dx = e.clientX - box.left, dy = e.clientY - box.top;
+    $('adminDrag').setPointerCapture(e.pointerId);
+    $('adminDrag').onpointermove = (m) => {
+      win.style.left = `${Math.max(-box.width / 2, Math.min(innerWidth - box.width / 2, m.clientX - dx)) + box.width / 2}px`;
+      win.style.top = `${Math.max(0, Math.min(innerHeight - 40, m.clientY - dy)) + box.height / 2}px`;
+    };
+    $('adminDrag').onpointerup = () => { $('adminDrag').onpointermove = null; };
+  };
+  $('btnAdminClose').onclick = closeAdmin;
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAdmin(); });
 
   // ----- accounts -----
   async function enterGame() {
@@ -1478,7 +1506,7 @@ const Game = (() => {
   $('btnRest').onclick = () => openBag('energy');
   $('btnBag').onclick = () => openBag(null);
   $('btnFriends').onclick = () => show('friends');
-  $('btnAdmin').onclick = () => show('admin');
+  $('btnAdmin').onclick = openAdmin;
   $('btnAddFriend').onclick = () => addFriend($('friendName').value);
   $('friendName').onkeydown = (e) => { if (e.key === 'Enter') addFriend($('friendName').value); };
   $('pet').onpointerdown = petHer;
