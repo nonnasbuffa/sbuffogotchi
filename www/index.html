@@ -21,7 +21,7 @@ button.main{background:#2f7d5b;border-color:var(--green)}button.boss{background:
 input{font:inherit;color:var(--text);background:#1a1527;border:3px solid var(--line);padding:12px;width:100%;user-select:text}
 .top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:bold}
 .streak{color:var(--gold)}.xp{height:12px;background:#1a1527;border:2px solid var(--line)}.xp i{display:block;height:100%;background:var(--blue)}
-.stage{background:linear-gradient(#efe6d4 0 72%,#c9a77f 72%);border:3px solid var(--line);display:flex;justify-content:center;align-items:flex-end;height:290px;position:relative;overflow:hidden}
+.stage{background:#efe6d4 url(sprites/room.png) center bottom/cover no-repeat;image-rendering:pixelated;container:room/inline-size;border:3px solid var(--line);display:flex;justify-content:center;align-items:flex-end;height:290px;position:relative;overflow:hidden}
 .sprite{width:44px;height:54px;image-rendering:pixelated;transform:scale(5);transform-origin:bottom center;margin-bottom:6px}
 .say{position:absolute;top:8px;left:8px;right:8px;text-align:center;color:#2a2238;font-weight:bold;font-size:14px}
 .bars{display:grid;grid-template-columns:auto 1fr;gap:6px 8px;align-items:center;font-size:14px}.bar{height:14px;background:#1a1527;border:2px solid var(--line)}.bar i{display:block;height:100%}
@@ -80,39 +80,49 @@ html,body,button,canvas,#app *{-webkit-user-select:none;user-select:none;-webkit
 .toast{z-index:30;position:fixed;left:16px;right:16px;bottom:24px;max-width:448px;margin:auto;background:#000c;border:2px solid var(--gold);padding:10px;text-align:center;font-weight:bold;pointer-events:none;opacity:0;transition:opacity .2s}.toast.on{opacity:1}
 .side{display:contents}
 .top>*{flex-shrink:0}#btnAccount{flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* Computers and other wide screens: bigger text and a side-by-side home screen instead of a phone-width column. */
+.infoCard{display:none}
+/* Computers and other wide screens: a side-by-side home where her room sets the size and the right column fills it. */
 @media (min-width:900px) and (min-aspect-ratio:5/4){
-html,body{font-size:19px}
-#app{max-width:1180px;padding:20px 36px 24px;gap:14px}
+html,body{font-size:18px}
+#app{max-width:calc((100dvh - 150px) * 2.4 + 100px);padding:18px 36px 22px;gap:14px;justify-content:center}
 .screen{width:min(100%,820px);margin:0 auto;gap:14px}
-h2{font-size:28px}.dim{font-size:17px}.ic{width:32px;height:32px;vertical-align:-9px}
+h2{font-size:28px}.dim{font-size:17px}.ic{width:30px;height:30px;vertical-align:-8px}
 button{min-height:58px;font-size:19px}
-#s-home{width:100%}
-#s-home.on{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);grid-template-rows:auto auto 1fr;column-gap:28px;row-gap:14px}
-#s-home .top{grid-column:1/-1;font-size:22px}#s-home .xp{grid-column:1/-1;height:16px}
-#s-home .stage{grid-column:1;height:auto;min-height:0}
-#s-home .side{grid-column:2;display:flex;flex-direction:column;justify-content:center;gap:16px}
-#s-home .bars{gap:14px 12px}#s-home .bar{height:22px}
-#s-home button{min-height:76px;padding:10px 8px;font-size:21px}
-#s-home .stats{font-size:22px;gap:34px}
-#s-home .iconBtn .ic{width:36px;height:36px}
-#pet{transform:scale(8)}.say{font-size:19px;top:14px}
+#s-home{width:100%;flex:none}
+#s-home.on{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);column-gap:26px;row-gap:12px}
+#s-home .top{grid-column:1/-1;font-size:clamp(20px,2.4vh,30px)}#s-home .top .ic{width:clamp(28px,3.2vh,40px);height:clamp(28px,3.2vh,40px)}#s-home .xp{grid-column:1/-1;height:14px}
+#s-home .stage{grid-column:1;height:auto;aspect-ratio:4/3;min-height:0}
+#s-home .side{grid-column:2;display:flex;flex-direction:column;justify-content:space-between;gap:10px;min-width:0}
+.infoCard{display:flex;flex-direction:column;gap:clamp(4px,.8vh,10px);background:var(--panel);border:3px solid var(--line);padding:10px 14px;font-size:clamp(15px,1.7vh,22px)}
+.infoHead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;border-bottom:2px solid var(--line);padding-bottom:6px;margin-bottom:2px}
+.infoHead b{color:var(--gold);font-size:clamp(19px,2.3vh,30px)}.infoHead span{color:var(--dim)}
+.infoLine{display:flex;align-items:center;gap:8px}.infoLine .ic{width:clamp(22px,2.6vh,34px);height:clamp(22px,2.6vh,34px);flex:none}
+.infoItems{display:flex;flex-wrap:wrap;gap:4px 12px;padding-top:4px;border-top:2px solid var(--line);margin-top:2px}.infoItems span{display:inline-flex;align-items:center;gap:3px;font-weight:bold}.infoItems img{width:clamp(24px,2.8vh,36px);height:clamp(24px,2.8vh,36px);image-rendering:pixelated}
+#s-home .bars{gap:clamp(8px,1.2vh,16px) 12px}#s-home .bar{height:clamp(18px,2.2vh,28px)}#s-home .bars .ic{width:clamp(28px,3.2vh,40px);height:clamp(28px,3.2vh,40px)}
+#s-home button{min-height:clamp(52px,7.5vh,92px);padding:8px;font-size:clamp(18px,2.3vh,28px)}#s-home button .ic{width:clamp(28px,3.4vh,42px);height:clamp(28px,3.4vh,42px)}
+#s-home .stats{font-size:clamp(19px,2.3vh,28px);gap:30px}#s-home .stats .ic{width:clamp(28px,3.2vh,40px);height:clamp(28px,3.2vh,40px)}
+#s-home .iconBtn .ic{width:clamp(32px,3.6vh,46px);height:clamp(32px,3.6vh,46px)}
+.say{font-size:clamp(17px,2.1vh,26px);top:12px}
+#pet{transform:scale(5)}
+@container room (min-width:520px){#pet{transform:scale(5.5)}}
+@container room (min-width:580px){#pet{transform:scale(6)}}
+@container room (min-width:650px){#pet{transform:scale(7)}}
+@container room (min-width:740px){#pet{transform:scale(8)}}
+@container room (min-width:840px){#pet{transform:scale(9)}}
+@container room (min-width:940px){#pet{transform:scale(10)}}
+@container room (min-width:1040px){#pet{transform:scale(11)}}
 #miniList,#trainList,#bossList{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.bossRow img{width:88px;height:88px}.bossRow{grid-template-columns:88px 1fr 120px}.bossRow button{font-size:17px;min-height:50px}.bossRow small,.bossRow p{font-size:16px}
-#bagList .bossRow{grid-template-columns:56px 1fr 110px}#bagList .bossRow img{width:56px;height:56px}#bagList .bossRow button{min-height:46px}
+.bossRow img{width:80px;height:80px}.bossRow{grid-template-columns:80px 1fr 116px}.bossRow button{font-size:17px;min-height:50px}
+#bagList .bossRow{grid-template-columns:52px 1fr 104px}#bagList .bossRow img{width:52px;height:52px}#bagList .bossRow button{min-height:44px}
 #s-whack,#s-order,#s-train,#s-boss,#s-mini{width:min(100%,620px)}
 #miniCanvas{height:calc(100dvh - 210px)}#s-mini.pad #miniCanvas{height:calc(100dvh - 290px)}#whackGrid{width:min(100%,calc(100dvh - 250px));margin:0 auto}
-#s-bag{flex:none;height:calc(100dvh - 44px)}#bagList{flex:1;min-height:0;overflow-y:auto}
+#s-bag{flex:none;height:calc(100dvh - 40px)}#bagList{flex:1;min-height:0;overflow-y:auto}
 .toast{font-size:19px}
 }
-@media (min-width:900px) and (min-aspect-ratio:5/4) and (max-height:800px){
-#pet{transform:scale(6)}
-#s-home button{min-height:62px}#s-home .side{gap:12px}
-#miniList .bossRow img,#trainList .bossRow img,.bossRow img{width:72px;height:72px}.bossRow{grid-template-columns:72px 1fr 110px}
+@media (min-width:900px) and (min-aspect-ratio:5/4) and (max-height:760px){
+#s-home button{min-height:52px;font-size:18px}.infoCard{font-size:15px;gap:4px;padding:8px 12px}.infoHead b{font-size:19px}
 }
-@media (min-width:900px) and (min-aspect-ratio:5/4) and (max-height:640px){
-#pet{transform:scale(4.5)}#s-home button{min-height:50px;font-size:18px}
-}
+@media (min-width:900px) and (min-aspect-ratio:5/4) and (max-height:660px){.infoItems,.infoLine:has(#infoDaily){display:none}#s-home button{min-height:46px;font-size:17px}#s-home .side{gap:6px}#s-home .stats{font-size:18px}}
 </style>
 </head>
 <body>
@@ -133,6 +143,13 @@ button{min-height:58px;font-size:19px}
     <div class="xp"><i id="xpFill"></i></div>
     <div class="stage"><div class="say" id="say"></div><div class="sprite" id="pet"></div></div>
     <div class="side">
+    <div class="infoCard">
+      <div class="infoHead"><b id="infoLevel"></b><span id="infoXp"></span></div>
+      <div class="infoLine"><img class="ic" src="sprites/icons/bowl.png" alt=""><span id="infoStreak"></span></div>
+      <div class="infoLine"><img class="ic" id="infoBossIcon" src="sprites/icons/trophy.png" alt=""><span id="infoBoss"></span></div>
+      <div class="infoLine"><img class="ic" src="sprites/icons/star.png" alt=""><span id="infoDaily"></span></div>
+      <div class="infoItems" id="infoItems"></div>
+    </div>
     <div class="bars">
       <span><img class="ic" src="sprites/icons/apple.png" alt="" data-i18n-alt="food"></span><div class="bar"><i id="b-food" style="background:var(--gold)"></i></div>
       <span><img class="ic" src="sprites/icons/bolt.png" alt="" data-i18n-alt="energy"></span><div class="bar"><i id="b-energy" style="background:var(--blue)"></i></div>

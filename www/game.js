@@ -207,6 +207,34 @@ const Game = (() => {
     const need = nextBossLevel();
     $('btnBossLabel').textContent = t(S.level >= need ? 'bossReady' : 'bosses');
     $('btnTrain').disabled = S.energy <= 10;
+    renderInfo(need);
+  }
+  // The computer layout's info panel: progress, what's next and what's in the bag.
+  function renderInfo(need) {
+    $('infoLevel').textContent = t('levelN', { n: S.level });
+    $('infoXp').textContent = t('xpOf', { a: S.xp, b: xpNeeded() });
+    $('infoStreak').textContent = t('infoStreak', { n: S.streak, s: S.shields });
+    const boss = bossFor(S.bossWins);
+    $('infoBossIcon').src = `sprites/boss_${boss.art}.png`;
+    $('infoBoss').textContent = S.level >= need ? t('infoBossReady', { name: boss.name }) : t('infoBossAt', { name: boss.name, n: need });
+    if (dailyReady()) $('infoDaily').textContent = t('infoDailyReady');
+    else {
+      const now = new Date(Cloud.now());
+      const left = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1) - now;
+      const hours = Math.floor(left / 3600000), minutes = Math.floor((left % 3600000) / 60000);
+      $('infoDaily').textContent = t('infoDailyIn', { t: hours ? `${hours}h ${minutes}m` : `${minutes}m` });
+    }
+    const items = $('infoItems');
+    items.replaceChildren();
+    for (const id of Object.keys(ITEMS)) {
+      if (!(S.items[id] > 0)) continue;
+      const span = document.createElement('span');
+      const img = document.createElement('img');
+      img.src = ITEMS[id].icon; img.alt = t(ITEMS[id].key); img.title = img.alt;
+      span.append(img, String(S.items[id]));
+      items.append(span);
+    }
+    if (!items.children.length) items.textContent = t('infoNoItems');
   }
   // Tapping her makes her happier; the short gap stops one held-down tap from filling the bar.
   let lastPet = 0;
