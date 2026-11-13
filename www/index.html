@@ -71,6 +71,8 @@ html,body,button,canvas,#app *{-webkit-user-select:none;user-select:none;-webkit
 .keyCatcher{position:fixed;left:-200px;top:0;width:1px;height:1px;opacity:0;pointer-events:none}.keysHint{display:none;margin:0;align-self:center;text-align:center;font-size:14px}
 @media (hover:hover) and (pointer:fine){.stick{display:none}.keysHint{display:block}}
 @media (max-height:700px){#s-minis,#s-bag,#s-trainMenu,#s-bosses{gap:7px}#s-minis p.dim,#s-bag p.dim{font-size:13px;margin:0}#s-minis h2,#s-bag h2{font-size:18px}#miniList .bossRow,#trainList .bossRow{grid-template-columns:56px 1fr 96px;padding:4px 8px}#miniList .bossRow img,#trainList .bossRow img{width:56px;height:56px}#bagList .bossRow img{width:40px;height:40px}#bagList .bossRow{grid-template-columns:40px 1fr 84px}}
+#s-admin,#s-friends{flex:none;height:calc(100dvh - 32px - max(12px,env(safe-area-inset-top)))}#adminList{flex:1;min-height:0;overflow-y:auto;gap:6px}#adminList button{padding:8px}#adminList button.picked{background:#2f7d5b;border-color:var(--green)}
+.adminItem{display:grid;grid-template-columns:32px 1fr 52px 60px;gap:6px;align-items:center;background:var(--panel);border:3px solid var(--line);padding:2px 6px}.adminItem img{width:32px;height:32px;image-rendering:pixelated}.adminItem button{min-height:34px;padding:2px}
 .toast{z-index:30;position:fixed;left:16px;right:16px;bottom:24px;max-width:448px;margin:auto;background:#000c;border:2px solid var(--gold);padding:10px;text-align:center;font-weight:bold;pointer-events:none;opacity:0;transition:opacity .2s}.toast.on{opacity:1}
 </style>
 </head>
@@ -115,6 +117,12 @@ html,body,button,canvas,#app *{-webkit-user-select:none;user-select:none;-webkit
     <div class="addFriend"><input id="friendName" data-i18n-ph="friendNamePh" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="40"><button class="main" id="btnAddFriend" data-i18n="add"></button></div>
     <p class="center dim" id="friendsMsg"></p>
     <div class="menuList" id="friendList"></div>
+    <button data-home data-i18n="back"></button>
+  </section>
+
+  <section class="screen" id="s-admin">
+    <h2 data-i18n="adminTitle"></h2>
+    <div class="menuList" id="adminList"></div>
     <button data-home data-i18n="back"></button>
   </section>
 

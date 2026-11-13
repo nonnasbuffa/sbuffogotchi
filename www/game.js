@@ -126,6 +126,7 @@ const Game = (() => {
     const now = Date.now();
     const hours = Math.max(0, now - S.tickAt) / 3600000;
     for (const k in DECAY_PER_HOUR) S[k] = clamp(S[k] - DECAY_PER_HOUR[k] * hours);
+    if (cheat('god')) S.food = S.energy = S.joy = 100;
     S.tickAt = now;
   }
   function checkIn() {
@@ -184,6 +185,7 @@ const Game = (() => {
     if (name === 'bag') renderBag();
     if (name === 'settings') renderSettings();
     if (name === 'friends') loadFriends();
+    if (name === 'admin') renderAdmin();
     if (name !== 'home') removeGolden();
   }
   let toastTimer;
@@ -375,6 +377,7 @@ const Game = (() => {
     music.style.marginTop = '12px';
     music.onclick = () => { Music.setEnabled(!Music.enabled()); renderSettings(); };
     list.append(music);
+    if (cheats.unlocked) list.append(adminButton(t('adminTitle'), () => show('admin')));
   }
 
   // ----- daily reward -----
@@ -773,6 +776,8 @@ const Game = (() => {
       if (b.x > MINI_W - RICE_R) { b.x = MINI_W - RICE_R; b.vx = -Math.abs(b.vx); }
       pongBounce(b, g.px, g.py);
       pongBounce(b, g.cx, g.cy);
+      // Invincible: the rice bounces back off her edge instead of getting past.
+      if (cheat('invincible') && b.y > MINI_H - RICE_R) { b.y = MINI_H - RICE_R; b.vy = -Math.abs(b.vy); }
       if (b.y < -12 || b.y > MINI_H + 12) {
         const youScored = b.y < 0;
         if (youScored) g.you += 1; else g.cpu += 1;
@@ -824,7 +829,7 @@ const Game = (() => {
       }
       for (const item of g.items) item.y += item.speed * dt;
       const caught = g.items.filter((i) => i.y > MINI_H - 66 && i.y < MINI_H - 20 && Math.abs(i.x - g.bx) < 44);
-      for (const item of caught) { if (item.bad) g.lives -= 1; else g.score += 1; }
+      for (const item of caught) { if (!item.bad) g.score += 1; else if (!cheat('invincible')) g.lives -= 1; }
       g.items = g.items.filter((i) => !caught.includes(i) && i.y < MINI_H + 30);
       this.info(g);
       if (g.time <= 0 || g.lives <= 0) this.end(g);
@@ -907,6 +912,7 @@ const Game = (() => {
       if (g.jump <= 0 && g.fall <= 0) g.jump = JUMP_TIME;
     },
     hurt(g) {
+      if (cheat('invincible')) return;
       g.hearts -= 1;
       g.fall = 0; g.jump = 0; g.safe = 1.2;
       g.x = g.spawn.x; g.y = g.spawn.y;
@@ -947,7 +953,7 @@ const Game = (() => {
       if (air) g.jump -= dt;
       else {
         const here = tileAt(g.x, g.y);
-        if (here === '_') { g.fall = 0.4; return; }
+        if (here === '_' && !cheat('invincible')) { g.fall = 0.4; return; }
         if (here === 's' && !g.safe && spikesUp(g.time, g.x, g.y)) return this.hurt(g);
         if (here === 'C') g.spawn = { x: Math.floor(g.x / TILE) * TILE + 16, y: Math.floor(g.y / TILE) * TILE + 16 };
         if (here === 'G') return finishMini(15, 25, t('parkourWin'), 2);
@@ -1067,7 +1073,7 @@ const Game = (() => {
     const you = Math.round((80 + S.level * 10) * wellness());
     fight = {
       b, hp, hpMax: hp, you, youMax: you, rematch, phase: 'fight', timer: null,
-      tapDamage: Math.max(1, Math.round((2 + S.str * 0.5) * wellness())),
+      tapDamage: cheat('oneShot') ? hp : Math.max(1, Math.round((2 + S.str * 0.5) * wellness())),
       hits: Math.min(2 + n, 5), hitDamage: 4 + n * 2, bowlNeed: 6 + Math.min(n, 4) * 2,
       hitsLeft: 0, bites: 0,
     };
@@ -1102,7 +1108,7 @@ const Game = (() => {
   }
   function bossStrike() {
     fight.hitsLeft -= 1;
-    fight.you = Math.max(0, fight.you - fight.hitDamage);
+    if (!cheat('god')) fight.you = Math.max(0, fight.you - fight.hitDamage);
     $('bossArt').animate([{ translate: '0' }, { translate: '-46px' }, { translate: '0' }], { duration: 220 });
     $('fightPet').parentElement.animate([{ translate: '0' }, { translate: '-8px' }, { translate: '8px' }, { translate: '0' }], { duration: 220 });
     renderFight();
@@ -1186,7 +1192,6 @@ const Game = (() => {
     friends = null;
     $('friendList').replaceChildren();
     const signedIn = !!Cloud.user();
-    $('friendName').disabled = $('btnAddFriend').disabled = !signedIn;
     if (!signedIn) { $('friendsMsg').textContent = t('friendsSignIn'); return; }
     $('friendsMsg').textContent = t('connecting');
     try {
@@ -1303,8 +1308,9 @@ const Game = (() => {
     friends.list = list;
   }
   async function addFriend(raw) {
-    if (!friends) return;
     const name = cleanName(raw);
+    if (name === ADMIN_CODE) return unlockAdmin();
+    if (!friends) { if (!Cloud.user()) $('friendsMsg').textContent = t('friendsSignIn'); return; }
     if (!name) return;
     if (name === Cloud.me()) { $('friendsMsg').textContent = t('friendSelf'); return; }
     if (friends.list.includes(name)) { $('friendsMsg').textContent = t('friendAlready'); return; }
@@ -1344,6 +1350,86 @@ const Game = (() => {
       toast(t('heartSent', { name: friends.fans.get(name)?.stats.name || name }));
       renderFriends();
     } catch { $('friendsMsg').textContent = t('friendsOffline'); }
+  }
+
+  // ----- secret admin panel -----
+  // Unlocked by searching the code below in Friends. Toggles are kept on this device only.
+  const ADMIN_CODE = '0100000101000100010011010100100101001110'; // "ADMIN" in binary.
+  const ADMIN_KEY = 'sbuffogotchi.admin';
+  let cheats = {};
+  try { cheats = JSON.parse(localStorage.getItem(ADMIN_KEY)) || {}; } catch { /* locked */ }
+  const cheat = (name) => !!(cheats.unlocked && cheats[name]);
+  function saveCheats() {
+    try { localStorage.setItem(ADMIN_KEY, JSON.stringify(cheats)); } catch { /* lasts until the app closes */ }
+  }
+  function unlockAdmin() {
+    cheats.unlocked = true;
+    saveCheats();
+    $('friendName').value = '';
+    show('admin');
+    toast(t('adminUnlocked'));
+  }
+  const ADMIN_TOGGLES = [
+    ['god', 'cheatGod'],
+    ['oneShot', 'cheatOneShot'],
+    ['invincible', 'cheatInvincible'],
+  ];
+  const ADMIN_ACTIONS = [
+    ['cheatFill', () => { S.food = S.energy = S.joy = 100; S.tickAt = Date.now(); }],
+    ['cheatLevel', () => { S.level += 1; S.xp = 0; }],
+    ['cheatStr', () => { S.str += 10; }],
+    ['cheatShield', () => { S.shields += 1; }],
+    ['cheatBoss', () => { S.level = Math.max(S.level, nextBossLevel()); }],
+    ['cheatDaily', () => { S.lastReward = dayNumber(Cloud.now()) - 1; }],
+    ['cheatGolden', () => { show('home'); spawnGolden(); return true; }],
+  ];
+  function adminButton(label, onclick, cls) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    if (cls) b.className = cls;
+    b.onclick = onclick;
+    return b;
+  }
+  function renderAdmin() {
+    const list = $('adminList');
+    list.replaceChildren();
+    for (const [name, key] of ADMIN_TOGGLES) {
+      list.append(adminButton(`${t(key)}: ${t(cheats[name] ? 'musicOn' : 'musicOff')}`, () => {
+        cheats[name] = !cheats[name];
+        saveCheats();
+        if (name === 'god' && cheats.god) { tick(); save(); }
+        renderAdmin();
+      }, cheats[name] ? 'picked' : ''));
+    }
+    list.append(heading('cheatItems'));
+    for (const id of Object.keys(ITEMS)) {
+      const row = document.createElement('div');
+      row.className = 'adminItem';
+      const img = document.createElement('img');
+      img.src = ITEMS[id].icon; img.alt = '';
+      const name = document.createElement('span');
+      name.textContent = `${t(ITEMS[id].key)} x${S.items[id] || 0}`;
+      const give = (n) => () => { addItems({ [id]: n }); save(); renderAdmin(); };
+      row.append(img, name, adminButton('+1', give(1)), adminButton('+10', give(10)));
+      list.append(row);
+    }
+    list.append(heading('cheatMore'));
+    const grid = document.createElement('div');
+    grid.className = 'row2';
+    for (const [key, run] of ADMIN_ACTIONS) {
+      grid.append(adminButton(t(key), () => {
+        const left = run();
+        save();
+        toast(t('cheatDone'));
+        if (!left) renderAdmin();
+      }));
+    }
+    list.append(grid);
+    list.append(adminButton(t('cheatLock'), () => {
+      cheats = {};
+      saveCheats();
+      show('home');
+    }, 'boss'));
   }
 
   // ----- accounts -----
