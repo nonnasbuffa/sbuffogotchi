@@ -143,8 +143,43 @@ const Cloud = (() => {
     return Number((await res.json()).users?.[0]?.createdAt) || null;
   }
 
+  // ----- gifts -----
+  async function sendGift(to, items) {
+    const fields = Object.fromEntries(Object.entries(items).map(([id, n]) => [id, { integerValue: String(n) }]));
+    await authed(`${docsBase()}/gifts`, {
+      method: 'POST',
+      body: JSON.stringify({ fields: {
+        from: { stringValue: me() }, fromName: { stringValue: session.name.trim() }, to: { stringValue: to },
+        items: { mapValue: { fields } }, at: { integerValue: String(Date.now()) },
+      } }),
+    }).then((res) => { if (!res.ok) throw new Error(`gift ${res.status}`); });
+  }
+  async function incomingGifts() {
+    const res = await authed(`${docsBase()}:runQuery`, {
+      method: 'POST',
+      body: JSON.stringify({ structuredQuery: {
+        from: [{ collectionId: 'gifts' }],
+        where: { fieldFilter: { field: { fieldPath: 'to' }, op: 'EQUAL', value: { stringValue: me() } } },
+        limit: 50,
+      } }),
+    });
+    return (await res.json()).filter((row) => row.document).map(({ document: d }) => ({
+      id: d.name.split('/').pop(),
+      from: d.fields.from?.stringValue, fromName: d.fields.fromName?.stringValue,
+      items: Object.fromEntries(Object.entries(d.fields.items?.mapValue?.fields || {}).map(([k, v]) => [k, Number(v.integerValue) || 0])),
+    }));
+  }
+  // Deleting only succeeds while the gift still exists, so a gift is claimed exactly once.
+  async function claimGift(id) {
+    if (!session || !configured()) return false;
+    const res = await fetch(`${docsBase()}/gifts/${encodeURIComponent(id)}?currentDocument.exists=true`, {
+      method: 'DELETE', headers: { Authorization: `Bearer ${await token()}` },
+    });
+    return res.ok;
+  }
+
   return {
-    configured, push, pull, accountCreated,
+    configured, push, pull, accountCreated, sendGift, incomingGifts, claimGift,
     me, getProfile, pushProfile, setFriends, setHearts, addedMe,
     user: () => session,
     login: (n, p) => auth('signInWithPassword', n, p),

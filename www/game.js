@@ -404,6 +404,10 @@ const Game = (() => {
     music.style.marginTop = '12px';
     music.onclick = () => { Music.setEnabled(!Music.enabled()); renderSettings(); };
     list.append(music);
+    const tut = document.createElement('button');
+    tut.textContent = t('tutReplay');
+    tut.onclick = startTutorial;
+    list.append(tut);
   }
 
   // ----- daily reward -----
@@ -476,6 +480,7 @@ const Game = (() => {
     toast(`${t('goldenToast')} ${itemsText({ pokebowl: 1 })} · ${t('plusXp', { n: xp })} · ${t('plusJoy', { n: 10 })}`);
   }
   function homeTimers() {
+    if (tutorialOn()) return;
     if (!$('s-home').classList.contains('on') || $('death').classList.contains('on')) return;
     tick();
     if (isDead()) return openDeath();
@@ -1341,6 +1346,7 @@ const Game = (() => {
   const ignored = () => { try { return JSON.parse(localStorage.getItem(IGNORED_KEY)) || []; } catch { return []; } };
   const cleanName = (name) => name.trim().toLowerCase();
   async function loadFriends() {
+    claimGifts();
     friends = null;
     $('friendList').replaceChildren();
     const signedIn = !!Cloud.user();
@@ -1397,6 +1403,7 @@ const Game = (() => {
     for (const [label, action, opts = {}] of buttons) {
       const btn = document.createElement('button');
       btn.textContent = label;
+      if (opts.icon) { const ic = document.createElement('img'); ic.className = 'ic'; ic.src = opts.icon; ic.alt = opts.title || ''; btn.append(ic); }
       if (opts.cls) btn.className = opts.cls;
       if (opts.title) btn.title = opts.title;
       btn.disabled = !!opts.disabled;
@@ -1451,6 +1458,7 @@ const Game = (() => {
         [low <= 0 ? t('friendDanger') : seenText(st.seen), low <= 0 ? 'danger' : ''],
       ], [
         [sentToday ? '♥ ✓' : '♥', () => sendHeart(n), { cls: 'heartBtn', disabled: sentToday, title: t('friendsAbout') }],
+        ['', () => openGift(n), { icon: 'sprites/icons/gift.png', title: t('giftBtn') }],
         ['✕', () => removeFriend(n, st.name || n)],
       ], { profile: n }));
     }
@@ -1663,6 +1671,7 @@ const Game = (() => {
     const grid = $('profGrid');
     grid.replaceChildren(...p.tiles.map(([icon, value, label]) => statTile(`sprites/${icon}.png`, value, label)));
     $('profActs').replaceChildren(...p.actions);
+    $('profActs').className = p.actions.length > 1 ? 'row2' : 'row1';
   }
   async function openMyProfile() {
     tick();
@@ -1713,6 +1722,12 @@ const Game = (() => {
     heart.className = 'main';
     heart.disabled = sentToday;
     heart.onclick = async () => { await sendHeart(id); openFriendProfile(id); };
+    const gift = document.createElement('button');
+    gift.className = 'main';
+    const giftIc = document.createElement('img');
+    giftIc.className = 'ic'; giftIc.src = 'sprites/icons/gift.png'; giftIc.alt = '';
+    gift.append(giftIc, t('giftBtn'));
+    gift.onclick = () => openGift(id);
     fillProfile({
       name: st.name || id,
       since: st.createdAt ? t('profJoined', { d: fmtDate(st.createdAt) }) : '',
@@ -1728,7 +1743,7 @@ const Game = (() => {
         ['icons/backpack', shown(st.items), t('profItems')],
         ['icons/heart', shown(st.deaths), t('profDeaths')],
       ],
-      actions: [heart],
+      actions: [heart, gift],
     });
     show('profile');
   }
@@ -1743,12 +1758,159 @@ const Game = (() => {
     show('login');
   }
 
+  // ----- gifts -----
+  // Send friends any items, as many as you like. A gift waits on the server until they open the game;
+  // claiming deletes it first, so the same gift can never be collected twice.
+  let giftTo = null;
+  let giftPick = {};
+  function openGift(id) {
+    const st = friends?.fans.get(id)?.stats;
+    giftTo = { id, name: st?.name || id };
+    giftPick = {};
+    $('giftWinTitle').textContent = t('giftTitle', { name: giftTo.name });
+    renderGift();
+    $('giftWin').classList.add('on');
+  }
+  function closeGift() { $('giftWin').classList.remove('on'); }
+  function renderGift() {
+    const list = $('giftList');
+    list.replaceChildren();
+    const owned = Object.keys(ITEMS).filter((id) => S.items[id] > 0);
+    if (!owned.length) {
+      const empty = document.createElement('p');
+      empty.className = 'center dim'; empty.textContent = t('giftNothing');
+      list.append(empty);
+    }
+    for (const id of owned) {
+      const have = S.items[id];
+      const pick = giftPick[id] || 0;
+      const row = document.createElement('div');
+      row.className = 'giftRow';
+      const img = document.createElement('img');
+      img.src = ITEMS[id].icon; img.alt = '';
+      const name = document.createElement('span');
+      name.textContent = `${t(ITEMS[id].key)} (${have})`;
+      const set = (n) => () => { giftPick[id] = Math.max(0, Math.min(have, n)); renderGift(); };
+      const minus = adminButton('−', set(pick - 1));
+      const count = document.createElement('b');
+      count.textContent = pick;
+      const plus = adminButton('+', set(pick + 1));
+      const all = adminButton(t('giftAll'), set(have));
+      minus.disabled = !pick; plus.disabled = pick >= have;
+      row.append(img, name, minus, count, plus, all);
+      list.append(row);
+    }
+    const total = Object.values(giftPick).reduce((a, b) => a + b, 0);
+    $('btnGiftSend').disabled = !total;
+    $('btnGiftSend').textContent = total ? t('giftSend', { n: total }) : t('giftPick');
+  }
+  async function sendGift() {
+    const items = Object.fromEntries(Object.entries(giftPick).filter(([id, n]) => n > 0 && n <= (S.items[id] || 0)));
+    if (!Object.keys(items).length || !giftTo) return;
+    $('btnGiftSend').disabled = true;
+    try {
+      await Cloud.sendGift(giftTo.id, items);
+    } catch {
+      toast(t('friendsOffline'));
+      renderGift();
+      return;
+    }
+    for (const [id, n] of Object.entries(items)) S.items[id] -= n;
+    save(); render();
+    closeGift();
+    toast(t('giftSent', { name: giftTo.name, items: itemsText(items) }));
+  }
+  let claiming = false;
+  async function claimGifts() {
+    if (!Cloud.user() || claiming) return;
+    claiming = true;
+    try {
+      const got = [];
+      for (const gift of await Cloud.incomingGifts()) {
+        // Only the copy that is actually deleted here counts, so two devices can't both collect it.
+        if (!(await Cloud.claimGift(gift.id))) continue;
+        const items = Object.fromEntries(Object.entries(gift.items).filter(([id, n]) => ITEMS[id] && n > 0));
+        addItems(items);
+        got.push(t('giftGot', { name: gift.fromName || gift.from, items: itemsText(items) }));
+      }
+      if (got.length) { save(); render(); toast(got.join(' · ')); }
+    } catch { /* tried again later */ }
+    claiming = false;
+  }
+
+  // ----- tutorial -----
+  // Shown once when a brand-new Sbuffling hatches, and again from Settings.
+  const TUTORIAL = [
+    { text: 'tut1' },
+    { target: '#s-home .stage', text: 'tut2' },
+    { target: '#s-home .bars', text: 'tut3' },
+    { target: '#btnFeed', row: true, text: 'tut4' },
+    { target: '#btnTrain', text: 'tut5' },
+    { target: '#btnBoss', text: 'tut6' },
+    { target: '#s-home .top .streak', text: 'tut7' },
+    { target: '#btnFriends', text: 'tut8' },
+    { target: '#btnAccount', text: 'tut9' },
+    { text: 'tut10' },
+  ];
+  let tutStep = -1;
+  const tutorialOn = () => tutStep >= 0;
+  function startTutorial() {
+    $('daily').classList.remove('on');
+    removeGolden();
+    show('home');
+    tutStep = 0;
+    $('tut').classList.add('on');
+    drawTutorial();
+  }
+  function endTutorial() {
+    tutStep = -1;
+    $('tut').classList.remove('on');
+    S.tutorialDone = true;
+    save();
+  }
+  function drawTutorial() {
+    if (!tutorialOn()) return;
+    const step = TUTORIAL[tutStep];
+    $('tutText').textContent = t(step.text);
+    $('tutCount').textContent = `${tutStep + 1}/${TUTORIAL.length}`;
+    $('btnTutNext').textContent = t(tutStep === TUTORIAL.length - 1 ? 'tutGo' : 'tutNext');
+    $('btnTutSkip').style.visibility = tutStep === TUTORIAL.length - 1 ? 'hidden' : '';
+    $('tutPic').hidden = !!step.target;
+    let el = step.target && document.querySelector(step.target);
+    if (el && step.row) el = el.parentElement;
+    const hole = $('tutHole'), box = $('tutBox');
+    box.style.top = ''; box.style.bottom = '';
+    if (!el) {
+      hole.style.cssText = `left:50%;top:50%;width:0;height:0;`;
+      box.style.top = '50%'; box.style.transform = 'translate(-50%,-50%)';
+      return;
+    }
+    const r = el.getBoundingClientRect();
+    const pad = 6;
+    hole.style.cssText = `left:${r.left - pad}px;top:${r.top - pad}px;width:${r.width + pad * 2}px;height:${r.height + pad * 2}px;`;
+    box.style.transform = 'translateX(-50%)';
+    // The text goes on whichever side of the highlight has more room.
+    if (r.top + r.height / 2 < innerHeight / 2) box.style.top = `${Math.min(innerHeight - box.offsetHeight - 8, r.bottom + pad + 10)}px`;
+    else box.style.bottom = `${Math.min(innerHeight - box.offsetHeight - 8, innerHeight - r.top + pad + 10)}px`;
+  }
+  $('btnTutNext').onclick = () => {
+    if (!tutorialOn()) return;
+    if (tutStep >= TUTORIAL.length - 1) return endTutorial();
+    tutStep += 1;
+    drawTutorial();
+  };
+  $('btnTutSkip').onclick = endTutorial;
+  window.addEventListener('resize', drawTutorial);
+
   // ----- accounts -----
   async function enterGame() {
     S = loadLocal();
+    let offline = false;
     if (Cloud.user()) {
-      try { S = merge(S, await Cloud.pull()); } catch { toast(t('offlineLater')); }
+      try { S = merge(S, await Cloud.pull()); } catch { offline = true; toast(t('offlineLater')); }
     }
+    // A Sbuffling that has never had a first day is brand new: time for the tutorial.
+    if (S.lastDay == null && S.tutorialDone === undefined && !offline) S.tutorialDone = false;
     adoptOldCheats();
     if (!S.createdAt) S.createdAt = Date.now();
     if (Cloud.user()) {
@@ -1767,6 +1929,8 @@ const Game = (() => {
     const msg = checkIn();
     save(); show('home');
     if (msg) { toast(msg); play($('pet'), 'happy', restingAnim()); }
+    if (S.tutorialDone === false) startTutorial();
+    claimGifts();
     homeTimers();
   }
   async function authAction(kind) {
@@ -1873,9 +2037,12 @@ const Game = (() => {
   $('btnOffline').onclick = () => { localStorage.setItem('sbuffogotchi.guest', '1'); enterGame(); };
   $('btnAccount').onclick = openMyProfile;
   $('btnProfileBack').onclick = () => show(profileFrom);
+  $('btnGiftClose').onclick = closeGift;
+  $('btnGiftSend').onclick = sendGift;
   document.addEventListener('visibilitychange', () => { if (document.hidden) { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); sync(); } });
   window.addEventListener('online', sync);
   setInterval(homeTimers, 1000);
+  setInterval(() => { if (!document.hidden) claimGifts(); }, 60000);
   setInterval(() => { if ($('s-home').classList.contains('on')) { render(); } }, 5000);
 
   I18n.apply();

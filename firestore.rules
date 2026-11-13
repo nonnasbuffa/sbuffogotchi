@@ -21,5 +21,33 @@ service cloud.firestore {
       allow create, update: if isOwner() && valid();
       allow delete: if isOwner();
     }
+    // Gifts between friends. The sender creates one; only the receiver can read it to claim it (by deleting it).
+    match /gifts/{id} {
+      function myName() {
+        return request.auth.token.email.split('@')[0];
+      }
+      function countOk(items, key) {
+        return !(key in items) || (items[key] is int && items[key] > 0 && items[key] <= 100000);
+      }
+      function friendsBothWays(from, to) {
+        let mine = get(/databases/$(database)/documents/profiles/$(from)).data;
+        let theirs = get(/databases/$(database)/documents/profiles/$(to)).data;
+        return to in mine.get('friends', []) && from in theirs.get('friends', []);
+      }
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['from', 'fromName', 'to', 'items', 'at'])
+        && request.resource.data.from == myName()
+        && request.resource.data.to is string && request.resource.data.to != myName()
+        && request.resource.data.fromName is string && request.resource.data.fromName.size() < 60
+        && request.resource.data.items is map && request.resource.data.items.size() > 0
+        && request.resource.data.items.keys().hasOnly(['pokebowl', 'pizza', 'popsicle', 'phone', 'monster', 'diamond'])
+        && countOk(request.resource.data.items, 'pokebowl') && countOk(request.resource.data.items, 'pizza')
+        && countOk(request.resource.data.items, 'popsicle') && countOk(request.resource.data.items, 'phone')
+        && countOk(request.resource.data.items, 'monster') && countOk(request.resource.data.items, 'diamond')
+        && exists(/databases/$(database)/documents/profiles/$(request.resource.data.to))
+        && friendsBothWays(myName(), request.resource.data.to);
+      allow read: if request.auth != null && (resource.data.to == myName() || resource.data.from == myName());
+      allow delete: if request.auth != null && resource.data.to == myName();
+    }
   }
 }

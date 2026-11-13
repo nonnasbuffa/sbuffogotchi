@@ -215,6 +215,19 @@ def admin():
     return outlined(im)
 
 
+def gift():
+    """A red present with a gold ribbon, for sending gifts to friends."""
+    im, d = canvas(16, 16)
+    d.rectangle([2, 6, 13, 14], fill=RED)
+    d.rectangle([1, 4, 14, 7], fill=(240, 100, 86, 255))
+    d.rectangle([7, 4, 8, 14], fill=GOLD)
+    d.line([1, 5, 14, 5], fill=(240, 100, 86, 255))
+    d.ellipse([3, 0, 7, 4], outline=GOLD)
+    d.ellipse([8, 0, 12, 4], outline=GOLD)
+    d.point([(3, 8), (4, 9)], fill=(250, 150, 140, 255))
+    return outlined(im)
+
+
 def diamond_bowl():
     im, d = canvas(16, 16)
     ice, sky, deep, glint = (214, 244, 255, 255), (120, 210, 245, 255), (60, 140, 215, 255), (255, 255, 255, 255)
@@ -248,7 +261,7 @@ if __name__ == '__main__':
         'star': star, 'bowl': small_bowl, 'apple': apple, 'bolt': bolt, 'smile': smile, 'moon': moon,
         'heart': heart, 'dumbbell': dumbbell, 'trophy': trophy, 'shield': shield, 'rice': rice_grain,
         'salmon': salmon_piece, 'avocado': avocado, 'shrimp': shrimp, 'edamame': edamame,
-        'diamond': diamond_bowl, 'popsicle': popsicle, 'phone': phone, 'monster': energy_can, 'gear': gear, 'backpack': backpack, 'friends': friends, 'admin': admin,
+        'diamond': diamond_bowl, 'popsicle': popsicle, 'phone': phone, 'monster': energy_can, 'gear': gear, 'backpack': backpack, 'friends': friends, 'admin': admin, 'gift': gift,
     }.items():
         draw().save(icons / f'{name}.png')
     golden_bowl().save(OUT / 'golden_bowl.png')
