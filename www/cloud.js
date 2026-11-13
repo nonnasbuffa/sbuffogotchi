@@ -132,8 +132,19 @@ const Cloud = (() => {
     return (await res.json()).filter((row) => row.document).map((row) => readProfile(row.document));
   }
 
+  // When this account was created, in milliseconds.
+  async function accountCreated() {
+    if (!session || !configured()) return null;
+    const res = await fetch(`${authBase}/accounts:lookup?key=${CONFIG.apiKey}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken: await token() }),
+    });
+    if (!res.ok) return null;
+    return Number((await res.json()).users?.[0]?.createdAt) || null;
+  }
+
   return {
-    configured, push, pull,
+    configured, push, pull, accountCreated,
     me, getProfile, pushProfile, setFriends, setHearts, addedMe,
     user: () => session,
     login: (n, p) => auth('signInWithPassword', n, p),

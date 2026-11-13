@@ -114,7 +114,8 @@ const Game = (() => {
       // A reward claimed on any device stays claimed everywhere.
       rewardDay: Math.max(local.rewardDay ?? 0, remote.rewardDay ?? 0),
       lastReward: Math.max(local.lastReward ?? -1, remote.lastReward ?? -1),
-      mortal: local.mortal || remote.mortal };
+      mortal: local.mortal || remote.mortal,
+      createdAt: Math.min(local.createdAt || Infinity, remote.createdAt || Infinity) === Infinity ? undefined : Math.min(local.createdAt || Infinity, remote.createdAt || Infinity) };
   }
 
   // ----- time, needs, streak -----
@@ -199,7 +200,7 @@ const Game = (() => {
     for (const k of ['food', 'energy', 'joy']) $(`b-${k}`).style.width = `${S[k]}%`;
     $('str').textContent = S.str; $('wins').textContent = S.bossWins; $('shields').textContent = S.shields;
     const u = Cloud.user();
-    $('btnAccount').textContent = u ? u.name : t('signIn');
+    $('btnAccount').textContent = u ? u.name : t('guestName');
     $('btnAdmin').hidden = !cheat('unlocked');
     const lowest = Math.min(S.food, S.energy, S.joy);
     $('say').textContent = lowest >= 25 ? '' : S.food === lowest ? t(hasItemFor('food') ? 'hungry' : 'noFood') : S.energy === lowest ? t(hasItemFor('energy') ? 'tired' : 'noEnergy') : t('lonely');
@@ -377,7 +378,7 @@ const Game = (() => {
   function startOver() {
     if (S.items.diamond > 0 && !confirm(t('startOverConfirm'))) return;
     // Today's daily reward stays claimed, so dying can't be used to collect it again.
-    S = { ...fresh(), life: (S.life || 0) + 1, lastReward: S.lastReward, mortal: true, nextGolden: Date.now() + GOLDEN_EVERY_MS, cheats: S.cheats };
+    S = { ...fresh(), life: (S.life || 0) + 1, lastReward: S.lastReward, mortal: true, nextGolden: Date.now() + GOLDEN_EVERY_MS, cheats: S.cheats, createdAt: S.createdAt };
     const msg = checkIn();
     save(); sync();
     $('death').classList.remove('on');
@@ -1333,6 +1334,8 @@ const Game = (() => {
   const publicStats = () => ({
     name: Cloud.user().name, level: S.level, streak: S.streak, bossWins: S.bossWins,
     food: Math.round(S.food), energy: Math.round(S.energy), joy: Math.round(S.joy), seen: Cloud.now(),
+    str: S.str, shields: S.shields, rhythmBest: S.rhythmBest || 0, deaths: S.life || 0,
+    items: Object.values(S.items).reduce((sum, n) => sum + (n || 0), 0), createdAt: S.createdAt,
   });
   let friends = null; // { list, hearts, fans } once loaded
   const ignored = () => { try { return JSON.parse(localStorage.getItem(IGNORED_KEY)) || []; } catch { return []; } };
@@ -1375,7 +1378,7 @@ const Game = (() => {
         : fmt.format(-Math.round(minutes / 1440), 'day');
     return t('seenAgo', { t: ago });
   }
-  function friendRow(name, lines, buttons) {
+  function friendRow(name, lines, buttons, opts = {}) {
     const row = document.createElement('div');
     row.className = 'friendRow';
     const img = document.createElement('img');
@@ -1401,6 +1404,10 @@ const Game = (() => {
       acts.append(btn);
     }
     row.append(img, info, acts);
+    if (opts.profile) {
+      row.classList.add('tappable');
+      row.onclick = (e) => { if (!e.target.closest('button')) openFriendProfile(opts.profile); };
+    }
     return row;
   }
   function heading(key) {
@@ -1445,7 +1452,7 @@ const Game = (() => {
       ], [
         [sentToday ? '♥ ✓' : '♥', () => sendHeart(n), { cls: 'heartBtn', disabled: sentToday, title: t('friendsAbout') }],
         ['✕', () => removeFriend(n, st.name || n)],
-      ]));
+      ], { profile: n }));
     }
     if (sent.length) {
       list.append(heading('sentHeader'));
@@ -1616,6 +1623,126 @@ const Game = (() => {
   $('btnAdminClose').onclick = closeAdmin;
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAdmin(); });
 
+  // ----- profiles -----
+  // Your own profile shows everything about her; a friend's shows what their public profile shares.
+  let profileFrom = 'home';
+  const totalItems = () => Object.values(S.items).reduce((sum, n) => sum + (n || 0), 0);
+  const fmtDate = (ms) => (ms ? new Intl.DateTimeFormat(I18n.current(), { dateStyle: 'long' }).format(new Date(ms)) : '?');
+  const shown = (v) => (v === undefined || v === null ? '?' : v);
+  function statTile(icon, value, label) {
+    const tile = document.createElement('div');
+    tile.className = 'tile';
+    const img = document.createElement('img');
+    img.src = icon; img.alt = '';
+    const b = document.createElement('b');
+    b.textContent = value;
+    const span = document.createElement('span');
+    span.textContent = label;
+    tile.append(img, b, span);
+    return tile;
+  }
+  function profileBars(f, e, j) {
+    const box = $('profBars');
+    box.replaceChildren();
+    for (const [icon, value, color] of [['apple', f, 'var(--gold)'], ['bolt', e, 'var(--blue)'], ['smile', j, 'var(--green)']]) {
+      const ic = document.createElement('img');
+      ic.className = 'ic'; ic.src = `sprites/icons/${icon}.png`; ic.alt = '';
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      const fill = document.createElement('i');
+      fill.style.width = `${clamp(value)}%`; fill.style.background = color;
+      bar.append(fill);
+      box.append(ic, bar);
+    }
+  }
+  function fillProfile(p) {
+    $('profName').textContent = p.name;
+    $('profSince').textContent = p.since;
+    $('profSeen').textContent = p.seen || '';
+    profileBars(p.food, p.energy, p.joy);
+    const grid = $('profGrid');
+    grid.replaceChildren(...p.tiles.map(([icon, value, label]) => statTile(`sprites/${icon}.png`, value, label)));
+    $('profActs').replaceChildren(...p.actions);
+  }
+  async function openMyProfile() {
+    tick();
+    profileFrom = 'home';
+    const u = Cloud.user();
+    const logout = document.createElement('button');
+    logout.textContent = t(u ? 'logout' : 'signIn');
+    logout.className = u ? 'boss' : 'main';
+    logout.onclick = leaveAccount;
+    const me = {
+      name: u ? u.name : t('guestName'),
+      since: t(u ? 'profJoined' : 'profPlaying', { d: fmtDate(S.createdAt) }),
+      food: S.food, energy: S.energy, joy: S.joy,
+      tiles: [
+        ['icons/star', t('levelN', { n: S.level }), t('xpOf', { a: S.xp, b: xpNeeded() })],
+        ['icons/trophy', S.bossWins, t('profBosses')],
+        ['icons/bowl', S.streak, t('profStreak')],
+        ['icons/shield', S.shields, t('shields')],
+        ['icons/dumbbell', S.str, t('strength')],
+        ['icons/rice', S.rhythmBest || 0, t('profRhythm')],
+        ['icons/backpack', totalItems(), t('profItems')],
+        ['icons/diamond', S.items.diamond || 0, t('itemDiamond')],
+        ['icons/heart', S.life || 0, t('profDeaths')],
+        ['icons/friends', u ? '…' : '-', t('friends')],
+      ],
+      actions: [logout],
+    };
+    fillProfile(me);
+    show('profile');
+    if (!u) return;
+    // The friend count needs the server, so it fills in when it arrives.
+    try {
+      const [mine, fans] = await Promise.all([Cloud.getProfile(Cloud.me()), Cloud.addedMe()]);
+      const count = (mine?.friends || []).filter((n) => fans.some((p) => p.id === n)).length;
+      const tile = [...$('profGrid').children].at(-1);
+      if (tile && $('s-profile').classList.contains('on')) tile.querySelector('b').textContent = count;
+    } catch { /* stays as … */ }
+  }
+  function openFriendProfile(id) {
+    const st = friends?.fans.get(id)?.stats;
+    if (!st) return;
+    profileFrom = 'friends';
+    const hours = Math.max(0, Cloud.now() - (st.seen || 0)) / 3600000;
+    const now = (k) => Math.round(clamp((st[k] ?? 0) - DECAY_PER_HOUR[k] * hours));
+    const heart = document.createElement('button');
+    const sentToday = friends.hearts[id] === dayNumber(Cloud.now());
+    heart.textContent = sentToday ? '♥ ✓' : `♥ ${t('sendHeart')}`;
+    heart.className = 'main';
+    heart.disabled = sentToday;
+    heart.onclick = async () => { await sendHeart(id); openFriendProfile(id); };
+    fillProfile({
+      name: st.name || id,
+      since: st.createdAt ? t('profJoined', { d: fmtDate(st.createdAt) }) : '',
+      seen: seenText(st.seen),
+      food: now('food'), energy: now('energy'), joy: now('joy'),
+      tiles: [
+        ['icons/star', shown(st.level), t('level')],
+        ['icons/trophy', shown(st.bossWins), t('profBosses')],
+        ['icons/bowl', shown(st.streak), t('profStreak')],
+        ['icons/shield', shown(st.shields), t('shields')],
+        ['icons/dumbbell', shown(st.str), t('strength')],
+        ['icons/rice', shown(st.rhythmBest), t('profRhythm')],
+        ['icons/backpack', shown(st.items), t('profItems')],
+        ['icons/heart', shown(st.deaths), t('profDeaths')],
+      ],
+      actions: [heart],
+    });
+    show('profile');
+  }
+  async function leaveAccount() {
+    if (Cloud.user()) {
+      if (!confirm(t('logoutConfirm'))) return;
+      await sync();
+      Cloud.logout();
+      localStorage.removeItem(SAVE_KEY);
+    }
+    localStorage.removeItem('sbuffogotchi.guest');
+    show('login');
+  }
+
   // ----- accounts -----
   async function enterGame() {
     S = loadLocal();
@@ -1623,6 +1750,12 @@ const Game = (() => {
       try { S = merge(S, await Cloud.pull()); } catch { toast(t('offlineLater')); }
     }
     adoptOldCheats();
+    if (!S.createdAt) S.createdAt = Date.now();
+    if (Cloud.user()) {
+      Cloud.accountCreated().then((made) => {
+        if (made && made < S.createdAt) { S.createdAt = made; save(); }
+      }).catch(() => { /* keeps the device's date */ });
+    }
     // Saves from before dying existed get one top-up, so the update itself can't kill her.
     if (!S.mortal) {
       S.mortal = true;
@@ -1738,16 +1871,8 @@ const Game = (() => {
   $('btnLogin').onclick = () => authAction('login');
   $('btnSignup').onclick = () => authAction('signup');
   $('btnOffline').onclick = () => { localStorage.setItem('sbuffogotchi.guest', '1'); enterGame(); };
-  $('btnAccount').onclick = async () => {
-    if (Cloud.user()) {
-      if (!confirm(t('logoutConfirm'))) return;
-      await sync();
-      Cloud.logout();
-      localStorage.removeItem(SAVE_KEY);
-    }
-    localStorage.removeItem('sbuffogotchi.guest');
-    show('login');
-  };
+  $('btnAccount').onclick = openMyProfile;
+  $('btnProfileBack').onclick = () => show(profileFrom);
   document.addEventListener('visibilitychange', () => { if (document.hidden) { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); sync(); } });
   window.addEventListener('online', sync);
   setInterval(homeTimers, 1000);
