@@ -56,6 +56,7 @@ const Game = (() => {
   const REMATCH_ENERGY = 10;
   const DIAMOND_CHANCE_NEW_BOSS = 0.1;
   const DIAMOND_CHANCE_REMATCH = 0.02;
+  const BOSS_ENERGY_SHARE = 1 / 3;
   const REVIVE_BARS = 50;
   const ATTACK_GAP_MS = 4000;
   const FIRST_HIT_MS = 700;
@@ -94,7 +95,9 @@ const Game = (() => {
   }
   async function sync() {
     clearTimeout(syncTimer);
-    try { await Cloud.push(S); } catch { /* stays on the device; retried on the next save or reconnect */ }
+    try {
+      if (await Cloud.push(S)) await Cloud.pushProfile(publicStats());
+    } catch { /* stays on the device; retried on the next save or reconnect */ }
   }
   const progress = (s) => s.level * 1e6 + s.xp + s.str * 100 + s.bossWins * 1000;
   // Never let a stale device overwrite further progress.
@@ -180,6 +183,7 @@ const Game = (() => {
     if (name === 'minis') renderGameMenu('miniList', MINI_GAMES, MINI_COST);
     if (name === 'bag') renderBag();
     if (name === 'settings') renderSettings();
+    if (name === 'friends') loadFriends();
     if (name !== 'home') removeGolden();
   }
   let toastTimer;
@@ -231,14 +235,18 @@ const Game = (() => {
   function addItems(items) {
     for (const [id, n] of Object.entries(items)) S.items[id] = (S.items[id] || 0) + n;
   }
-  // Rolls n random items from the drop table, adds them to the inventory and returns them.
-  function dropItems(n) {
+  const pickWeighted = (ids) => {
+    let roll = Math.random() * ids.reduce((sum, id) => sum + ITEMS[id].weight, 0);
+    return ids.find((key) => (roll -= ITEMS[key].weight) < 0) || ids[0];
+  };
+  // Rolls n random items, adds them to the inventory and returns them.
+  // With energyShare, each item is an energy item with that chance and food otherwise.
+  function dropItems(n, energyShare) {
     const ids = Object.keys(ITEMS).filter((id) => ITEMS[id].weight > 0);
-    const total = ids.reduce((sum, id) => sum + ITEMS[id].weight, 0);
     const found = {};
     for (let i = 0; i < n; i++) {
-      let roll = Math.random() * total;
-      const id = ids.find((key) => (roll -= ITEMS[key].weight) < 0) || ids[0];
+      const stat = energyShare === undefined ? null : Math.random() < energyShare ? 'energy' : 'food';
+      const id = pickWeighted(stat ? ids.filter((key) => ITEMS[key].stat === stat) : ids);
       found[id] = (found[id] || 0) + 1;
     }
     addItems(found);
@@ -1136,7 +1144,7 @@ const Game = (() => {
     if (fight.rematch) {
       if (won) { S.str += 1; S.joy = clamp(S.joy + 5); }
       const xp = addXp(won ? 20 : 4);
-      const found = won ? rollDiamond(dropItems(1), DIAMOND_CHANCE_REMATCH) : null;
+      const found = won ? rollDiamond(dropItems(2, BOSS_ENERGY_SHARE), DIAMOND_CHANCE_REMATCH) : null;
       save(); show('home'); play($('pet'), won ? 'happy' : 'sad', restingAnim());
       toast(won
         ? `${t('beatenAgain', { name: fight.b.name })} ${itemsText(found)} · ${t('plusStr', { n: 1 })} · ${t('plusXp', { n: xp })}`
@@ -1144,7 +1152,7 @@ const Game = (() => {
     } else if (won) {
       S.bossWins += 1; S.str += 3; S.joy = clamp(S.joy + 25);
       const xp = addXp(60);
-      const found = rollDiamond(dropItems(3), DIAMOND_CHANCE_NEW_BOSS);
+      const found = rollDiamond(dropItems(3, BOSS_ENERGY_SHARE), DIAMOND_CHANCE_NEW_BOSS);
       save(); show('home'); play($('pet'), 'happy', restingAnim());
       toast(`${t('defeated', { name: fight.b.name })} ${itemsText(found)} · ${t('plusStr', { n: 3 })} · ${t('plusXp', { n: xp })}`);
     } else {
@@ -1153,6 +1161,181 @@ const Game = (() => {
       save(); show('home'); play($('pet'), 'sad', restingAnim());
       toast(`${t('lost')} ${t('plusXp', { n: xp })}`);
     }
+  }
+
+  // ----- friends -----
+  const FRIEND_HEART_JOY = 5;
+  const IGNORED_KEY = 'sbuffogotchi.ignoredFriends';
+  // What friends can see about her. Bars are projected forward from `seen` when shown.
+  const publicStats = () => ({
+    name: Cloud.user().name, level: S.level, streak: S.streak, bossWins: S.bossWins,
+    food: Math.round(S.food), energy: Math.round(S.energy), joy: Math.round(S.joy), seen: Cloud.now(),
+  });
+  let friends = null; // { list, hearts, fans } once loaded
+  const ignored = () => { try { return JSON.parse(localStorage.getItem(IGNORED_KEY)) || []; } catch { return []; } };
+  const cleanName = (name) => name.trim().toLowerCase();
+  async function loadFriends() {
+    friends = null;
+    $('friendList').replaceChildren();
+    const signedIn = !!Cloud.user();
+    $('friendName').disabled = $('btnAddFriend').disabled = !signedIn;
+    if (!signedIn) { $('friendsMsg').textContent = t('friendsSignIn'); return; }
+    $('friendsMsg').textContent = t('connecting');
+    try {
+      const [mine, fans] = await Promise.all([Cloud.getProfile(Cloud.me()), Cloud.addedMe()]);
+      friends = { list: mine?.friends || [], hearts: mine?.hearts || {}, fans: new Map(fans.map((p) => [p.id, p])) };
+      $('friendsMsg').textContent = '';
+      claimHearts();
+      renderFriends();
+    } catch { $('friendsMsg').textContent = t('friendsOffline'); }
+  }
+  // A heart a friend sent today gives her happiness once.
+  function claimHearts() {
+    const today = dayNumber(Cloud.now());
+    S.heartsGot = S.heartsGot || {};
+    const from = [];
+    for (const p of friends.fans.values()) {
+      if (!friends.list.includes(p.id) || p.hearts[Cloud.me()] !== today || S.heartsGot[p.id] === today) continue;
+      S.heartsGot[p.id] = today;
+      from.push(p.stats.name || p.id);
+    }
+    if (!from.length) return;
+    S.joy = clamp(S.joy + FRIEND_HEART_JOY * from.length);
+    save();
+    toast(t('heartsGot', { names: from.join(', '), n: FRIEND_HEART_JOY * from.length }));
+  }
+  function seenText(ms) {
+    const minutes = Math.round((Cloud.now() - ms) / 60000);
+    if (!(minutes >= 5)) return t('seenNow');
+    const fmt = new Intl.RelativeTimeFormat(I18n.current(), { numeric: 'auto' });
+    const ago = minutes < 60 ? fmt.format(-minutes, 'minute')
+      : minutes < 1440 ? fmt.format(-Math.round(minutes / 60), 'hour')
+        : fmt.format(-Math.round(minutes / 1440), 'day');
+    return t('seenAgo', { t: ago });
+  }
+  function friendRow(name, lines, buttons) {
+    const row = document.createElement('div');
+    row.className = 'friendRow';
+    const img = document.createElement('img');
+    img.src = 'sprites/icons/walker.png'; img.alt = '';
+    const info = document.createElement('div');
+    const b = document.createElement('b'); b.textContent = name;
+    info.append(b);
+    for (const [text, cls] of lines) {
+      const line = document.createElement('small');
+      line.textContent = text;
+      if (cls) line.className = cls;
+      info.append(line);
+    }
+    const acts = document.createElement('div');
+    acts.className = 'acts';
+    for (const [label, action, opts = {}] of buttons) {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      if (opts.cls) btn.className = opts.cls;
+      if (opts.title) btn.title = opts.title;
+      btn.disabled = !!opts.disabled;
+      btn.onclick = action;
+      acts.append(btn);
+    }
+    row.append(img, info, acts);
+    return row;
+  }
+  function heading(key) {
+    const head = document.createElement('div');
+    head.className = 'bagHead'; head.textContent = t(key);
+    return head;
+  }
+  const statLine = (st) => t('friendLine', { l: st.level ?? 1, s: st.streak ?? 0, b: st.bossWins ?? 0 });
+  function renderFriends() {
+    if (!friends) return;
+    const list = $('friendList');
+    list.replaceChildren();
+    const today = dayNumber(Cloud.now());
+    const mutual = friends.list.filter((n) => friends.fans.has(n));
+    const requests = [...friends.fans.keys()].filter((n) => !friends.list.includes(n) && !ignored().includes(n));
+    const sent = friends.list.filter((n) => !friends.fans.has(n));
+    if (requests.length) {
+      list.append(heading('requestsHeader'));
+      for (const n of requests) {
+        const st = friends.fans.get(n).stats;
+        list.append(friendRow(st.name || n, [[statLine(st)]], [
+          [t('accept'), () => addFriend(n)],
+          ['✕', () => ignoreRequest(n)],
+        ]));
+      }
+    }
+    list.append(heading('friendsHeader'));
+    const note = document.createElement('small');
+    note.className = 'dim'; note.textContent = t(mutual.length ? 'friendsAbout' : 'friendsEmpty');
+    list.append(note);
+    for (const n of mutual) {
+      const st = friends.fans.get(n).stats;
+      const hours = Math.max(0, Cloud.now() - (st.seen || 0)) / 3600000;
+      const now = (k) => Math.round(clamp((st[k] ?? 0) - DECAY_PER_HOUR[k] * hours));
+      const bars = { f: now('food'), e: now('energy'), j: now('joy') };
+      const low = Math.min(bars.f, bars.e);
+      const sentToday = friends.hearts[n] === today;
+      list.append(friendRow(st.name || n, [
+        [statLine(st)],
+        [t('friendBars', bars), low <= 15 ? 'danger' : ''],
+        [low <= 0 ? t('friendDanger') : seenText(st.seen), low <= 0 ? 'danger' : ''],
+      ], [
+        [sentToday ? '♥ ✓' : '♥', () => sendHeart(n), { cls: 'heartBtn', disabled: sentToday, title: t('friendsAbout') }],
+        ['✕', () => removeFriend(n, st.name || n)],
+      ]));
+    }
+    if (sent.length) {
+      list.append(heading('sentHeader'));
+      for (const n of sent) list.append(friendRow(n, [], [['✕', () => removeFriend(n, n)]]));
+    }
+  }
+  async function saveFriends(list) {
+    await Cloud.setFriends(list);
+    friends.list = list;
+  }
+  async function addFriend(raw) {
+    if (!friends) return;
+    const name = cleanName(raw);
+    if (!name) return;
+    if (name === Cloud.me()) { $('friendsMsg').textContent = t('friendSelf'); return; }
+    if (friends.list.includes(name)) { $('friendsMsg').textContent = t('friendAlready'); return; }
+    $('friendsMsg').textContent = t('connecting');
+    try {
+      // Someone who already added her doesn't need looking up.
+      const p = friends.fans.get(name) || await Cloud.getProfile(name);
+      if (!p) { $('friendsMsg').textContent = t('friendNotFound', { name: raw.trim() }); return; }
+      await saveFriends([...friends.list, name]);
+      $('friendName').value = '';
+      $('friendsMsg').textContent = '';
+      const mutual = friends.fans.has(name);
+      toast(t(mutual ? 'friendAdded' : 'requestSent', { name: p.stats.name || name }));
+      if (mutual) claimHearts();
+      renderFriends();
+    } catch { $('friendsMsg').textContent = t('friendsOffline'); }
+  }
+  async function removeFriend(name, shown) {
+    if (!confirm(t('removeFriendConfirm', { name: shown }))) return;
+    try {
+      await saveFriends(friends.list.filter((n) => n !== name));
+      ignoreRequest(name);
+    } catch { $('friendsMsg').textContent = t('friendsOffline'); }
+  }
+  function ignoreRequest(name) {
+    try { localStorage.setItem(IGNORED_KEY, JSON.stringify([...new Set([...ignored(), name])])); } catch { /* shows again next time */ }
+    renderFriends();
+  }
+  async function sendHeart(name) {
+    const today = dayNumber(Cloud.now());
+    // Only today's hearts matter, so older ones are dropped to keep the profile small.
+    const hearts = Object.fromEntries(Object.entries(friends.hearts).filter(([, day]) => day === today));
+    hearts[name] = today;
+    try {
+      await Cloud.setHearts(hearts);
+      friends.hearts = hearts;
+      toast(t('heartSent', { name: friends.fans.get(name)?.stats.name || name }));
+      renderFriends();
+    } catch { $('friendsMsg').textContent = t('friendsOffline'); }
   }
 
   // ----- accounts -----
@@ -1193,6 +1376,9 @@ const Game = (() => {
   $('btnFeed').onclick = () => openBag('food');
   $('btnRest').onclick = () => openBag('energy');
   $('btnBag').onclick = () => openBag(null);
+  $('btnFriends').onclick = () => show('friends');
+  $('btnAddFriend').onclick = () => addFriend($('friendName').value);
+  $('friendName').onkeydown = (e) => { if (e.key === 'Enter') addFriend($('friendName').value); };
   $('pet').onpointerdown = petHer;
   document.querySelectorAll('[data-settings]').forEach((b) => {
     b.onclick = () => {

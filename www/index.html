@@ -64,6 +64,10 @@ button .ic{margin-right:5px}.stats{display:flex;justify-content:center;gap:22px;
 #s-mini.pad #miniCanvas{height:min(100dvh - 300px,(min(100vw,480px) - 32px)*1.375)}.dpad{display:grid;grid-template-columns:repeat(3,56px);grid-template-rows:repeat(2,50px);gap:4px;justify-content:center}.dpad button{min-height:0;padding:0;touch-action:none}#btnJump{touch-action:none}
 html,body,button,canvas,#app *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}input{-webkit-user-select:text;user-select:text}
 .stick{position:relative;width:104px;height:104px;border-radius:50%;background:#1a1527;border:3px solid var(--line);justify-self:center;touch-action:none;cursor:grab}.knob{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:var(--panel);border:3px solid var(--text);pointer-events:none}
+.addFriend{display:grid;grid-template-columns:1fr auto;gap:8px}.addFriend button{padding:8px 14px}#friendsMsg:empty{display:none}
+#friendList{flex:1;min-height:0;overflow-y:auto;gap:6px}.friendRow{display:grid;grid-template-columns:40px 1fr auto;gap:8px;align-items:center;background:var(--panel);border:3px solid var(--line);padding:4px 8px}
+.friendRow img{width:30px;height:41px;image-rendering:pixelated;justify-self:center}.friendRow small{display:block;color:var(--dim);font-size:12px}.friendRow .danger{color:var(--red);font-weight:bold}
+.friendRow .acts{display:flex;gap:6px}.friendRow .acts button{min-height:38px;padding:4px 10px;font-size:14px}.friendRow .acts button.heartBtn{color:var(--red);font-size:20px}
 .toast{z-index:30;position:fixed;left:16px;right:16px;bottom:24px;max-width:448px;margin:auto;background:#000c;border:2px solid var(--gold);padding:10px;text-align:center;font-weight:bold;pointer-events:none;opacity:0;transition:opacity .2s}.toast.on{opacity:1}
 </style>
 </head>
@@ -81,7 +85,7 @@ html,body,button,canvas,#app *{-webkit-user-select:none;user-select:none;-webkit
   </section>
 
   <section class="screen" id="s-home">
-    <div class="top"><span class="stat"><img class="ic" src="sprites/icons/star.png" alt="" data-i18n-alt="level"><span id="lvl"></span></span><span class="stat streak"><img class="ic" src="sprites/icons/bowl.png" alt="" data-i18n-alt="streak"><span id="streak"></span></span><button class="link" id="btnAccount" style="min-height:0;padding:0"></button><button class="link iconBtn" data-settings><img class="ic" src="sprites/icons/gear.png" alt="" data-i18n-alt="settings"></button></div>
+    <div class="top"><span class="stat"><img class="ic" src="sprites/icons/star.png" alt="" data-i18n-alt="level"><span id="lvl"></span></span><span class="stat streak"><img class="ic" src="sprites/icons/bowl.png" alt="" data-i18n-alt="streak"><span id="streak"></span></span><button class="link" id="btnAccount" style="min-height:0;padding:0"></button><button class="link iconBtn" id="btnFriends"><img class="ic" src="sprites/icons/friends.png" alt="" data-i18n-alt="friends"></button><button class="link iconBtn" data-settings><img class="ic" src="sprites/icons/gear.png" alt="" data-i18n-alt="settings"></button></div>
     <div class="xp"><i id="xpFill"></i></div>
     <div class="stage"><div class="say" id="say"></div><div class="sprite" id="pet"></div></div>
     <div class="bars">
@@ -100,6 +104,14 @@ html,body,button,canvas,#app *{-webkit-user-select:none;user-select:none;-webkit
     <p class="center dim" data-i18n="bagIntro"></p>
     <p class="center" id="bagStatus"></p>
     <div class="menuList" id="bagList"></div>
+    <button data-home data-i18n="back"></button>
+  </section>
+
+  <section class="screen" id="s-friends">
+    <h2 data-i18n="friends"></h2>
+    <div class="addFriend"><input id="friendName" data-i18n-ph="friendNamePh" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="40"><button class="main" id="btnAddFriend" data-i18n="add"></button></div>
+    <p class="center dim" id="friendsMsg"></p>
+    <div class="menuList" id="friendList"></div>
     <button data-home data-i18n="back"></button>
   </section>
 

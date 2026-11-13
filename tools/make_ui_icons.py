@@ -195,6 +195,16 @@ def backpack():
     return outlined(im)
 
 
+def friends():
+    im, d = canvas(16, 16)
+    back, front = (98, 182, 232, 255), (92, 170, 70, 255)
+    blob(d, 11, 5, 3, 3, back)
+    d.rounded_rectangle([7, 9, 15, 15], radius=3, fill=back)
+    blob(d, 5, 6, 3, 3, front)
+    d.rounded_rectangle([1, 10, 10, 15], radius=3, fill=front)
+    return outlined(im)
+
+
 def diamond_bowl():
     im, d = canvas(16, 16)
     ice, sky, deep, glint = (214, 244, 255, 255), (120, 210, 245, 255), (60, 140, 215, 255), (255, 255, 255, 255)
@@ -228,7 +238,7 @@ if __name__ == '__main__':
         'star': star, 'bowl': small_bowl, 'apple': apple, 'bolt': bolt, 'smile': smile, 'moon': moon,
         'heart': heart, 'dumbbell': dumbbell, 'trophy': trophy, 'shield': shield, 'rice': rice_grain,
         'salmon': salmon_piece, 'avocado': avocado, 'shrimp': shrimp, 'edamame': edamame,
-        'diamond': diamond_bowl, 'popsicle': popsicle, 'phone': phone, 'monster': energy_can, 'gear': gear, 'backpack': backpack,
+        'diamond': diamond_bowl, 'popsicle': popsicle, 'phone': phone, 'monster': energy_can, 'gear': gear, 'backpack': backpack, 'friends': friends,
     }.items():
         draw().save(icons / f'{name}.png')
     golden_bowl().save(OUT / 'golden_bowl.png')
