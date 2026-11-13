@@ -180,8 +180,7 @@ const Game = (() => {
     Music.play({ train: 'action', whack: 'action', order: 'action', mini: 'action', boss: 'boss' }[name] || 'home');
     if (name === 'home') { render(); play($('pet'), restingAnim()); }
     if (name === 'bosses') renderBossList();
-    if (name === 'trainMenu') renderGameMenu('trainList', TRAINING_GAMES, TRAIN_COST);
-    if (name === 'minis') renderGameMenu('miniList', MINI_GAMES, MINI_COST);
+    if (name === 'trainMenu') renderGameMenu();
     if (name === 'bag') renderBag();
     if (name === 'settings') renderSettings();
     if (name === 'friends') loadFriends();
@@ -206,7 +205,6 @@ const Game = (() => {
     $('say').textContent = lowest >= 25 ? '' : S.food === lowest ? t(hasItemFor('food') ? 'hungry' : 'noFood') : S.energy === lowest ? t(hasItemFor('energy') ? 'tired' : 'noEnergy') : t('lonely');
     const need = nextBossLevel();
     $('btnBossLabel').textContent = t(S.level >= need ? 'bossReady' : 'bosses');
-    $('btnTrain').disabled = S.energy <= 10;
     renderInfo(need);
   }
   // The computer layout's info panel: progress, what's next and what's in the bag.
@@ -577,11 +575,14 @@ const Game = (() => {
     row.append(img, text, go);
     list.append(row);
   }
-  function renderGameMenu(listId, games, cost) {
+  function renderGameMenu() {
     tick();
-    const list = $(listId);
+    const list = $('trainList');
     list.textContent = '';
-    games.forEach((game) => menuRow(list, game, cost));
+    for (const [key, games, cost] of [['trainHeader', TRAINING_GAMES, TRAIN_COST], ['gamesHeader', MINI_GAMES, MINI_COST]]) {
+      list.append(heading(key));
+      games.forEach((game) => menuRow(list, game, game.cost ?? cost));
+    }
   }
 
   // ----- Veggie Whack -----
@@ -706,8 +707,9 @@ const Game = (() => {
   let mini = null;
   function startMini(title, game) {
     tick();
-    const tired = S.energy <= MINI_COST;
-    if (!tired) payEnergy(MINI_COST);
+    const cost = game.cost ?? MINI_COST;
+    const tired = S.energy <= cost;
+    if (!tired) payEnergy(cost);
     $('miniTitle').textContent = t(title);
     mini = { ...game, tired, pointerX: MINI_W / 2, raf: 0, last: performance.now() };
     $('s-mini').classList.toggle('pad', !!game.pad);
@@ -720,7 +722,7 @@ const Game = (() => {
   // has focus, so on computers the walking games keep an invisible one focused.
   const usesKeyboard = () => matchMedia('(hover: hover) and (pointer: fine)').matches;
   function catchKeys() {
-    if (mini?.pad && usesKeyboard() && document.activeElement !== $('keyCatcher')) $('keyCatcher').focus({ preventScroll: true });
+    if ((mini?.pad || mini?.keys) && usesKeyboard() && document.activeElement !== $('keyCatcher')) $('keyCatcher').focus({ preventScroll: true });
   }
   function miniLoop(t) {
     if (!mini) return;
@@ -738,7 +740,7 @@ const Game = (() => {
     mini = null;
     $('keyCatcher').blur();
   }
-  function finishMini(joy, baseXp, message, drops) {
+  function finishMini(joy, baseXp, message, drops, str = 0) {
     const tired = mini.tired;
     stopMini();
     const parts = [];
@@ -746,6 +748,7 @@ const Game = (() => {
       S.joy = clamp(S.joy + joy);
       const xp = addXp(baseXp);
       parts.push(t('plusJoy', { n: joy }), t('plusXp', { n: xp }));
+      if (str) { S.str += str; parts.push(t('plusStr', { n: str })); }
     }
     if (drops) parts.push(itemsText(dropItems(drops)));
     save(); show('home'); play($('pet'), 'happy', restingAnim());
@@ -1043,7 +1046,126 @@ const Game = (() => {
     },
   };
 
+  // ----- Rice Rhythm -----
+  // Rice falls down four lanes onto four poke bowls; press a bowl as the rice lands on it.
+  // It never ends on its own: it speeds up as you score, and too many misses finish it.
+  const RHYTHM_LANES = 4;
+  const RHYTHM_LANE_W = MINI_W / RHYTHM_LANES;
+  const RHYTHM_HIT_Y = 382;
+  const RHYTHM_GOOD = 34; // How far from the bowl (in pixels) a press still counts.
+  const RHYTHM_PERFECT = 12;
+  const RHYTHM_MISSES = 5;
+  const RHYTHM_COLORS = ['#c46ad8', '#5aa8e8', '#5fcf80', '#e8604c'];
+  // Left, down, up, right like other rhythm games, plus D F J K and A S W D style keys.
+  const RHYTHM_KEYS = {
+    ArrowLeft: 0, ArrowDown: 1, ArrowUp: 2, ArrowRight: 3,
+    KeyD: 0, KeyF: 1, KeyJ: 2, KeyK: 3,
+  };
+  const RHYTHM_LABELS = ['D ←', 'F ↓', 'J ↑', 'K →'];
+  const rhythmSpeed = (g) => Math.min(560, 170 + g.score * 3.2);
+  const rhythmGap = (g) => Math.max(0.2, 0.78 - g.score * 0.0075);
+  const RICE_RHYTHM = {
+    keys: true,
+    cost: TRAIN_COST,
+    begin(g) {
+      g.score = 0; g.combo = 0; g.bestCombo = 0; g.misses = 0; g.notes = []; g.spawn = 1.2;
+      g.flash = [0, 0, 0, 0]; g.bump = [0, 0, 0, 0]; g.word = null;
+      this.info(g);
+    },
+    info(g) {
+      $('miniInfo').textContent = t('rhythmInfo', { n: g.score, c: g.combo, l: '♥'.repeat(Math.max(0, RHYTHM_MISSES - g.misses)) });
+    },
+    say(g, key, color) { g.word = { text: t(key), color, time: 0.5 }; },
+    miss(g) {
+      g.combo = 0;
+      this.say(g, 'rhythmMiss', '#e8604c');
+      if (cheat('invincible')) return;
+      g.misses += 1;
+      if (g.misses >= RHYTHM_MISSES) this.end(g);
+    },
+    press(g, lane) {
+      if (!mini || lane < 0 || lane >= RHYTHM_LANES) return;
+      g.flash[lane] = 0.12;
+      const hit = g.notes
+        .filter((n) => n.lane === lane && Math.abs(n.y - RHYTHM_HIT_Y) <= RHYTHM_GOOD)
+        .sort((a, b) => b.y - a.y)[0];
+      if (!hit) { this.miss(g); this.info(g); return; }
+      g.notes = g.notes.filter((n) => n !== hit);
+      g.score += 1; g.combo += 1; g.bestCombo = Math.max(g.bestCombo, g.combo);
+      g.bump[lane] = 0.15;
+      const perfect = Math.abs(hit.y - RHYTHM_HIT_Y) <= RHYTHM_PERFECT;
+      this.say(g, perfect ? 'rhythmPerfect' : 'rhythmGood', perfect ? '#ffc857' : '#f6eedd');
+      this.info(g);
+    },
+    end(g) {
+      const best = g.score > (S.rhythmBest || 0);
+      if (best) S.rhythmBest = g.score;
+      // The more rice, the bigger the prize.
+      const drops = Math.min(10, Math.floor(g.score / 12));
+      const str = Math.min(3, Math.floor(g.score / 25));
+      const message = `${t('rhythmDone', { n: g.score, c: g.bestCombo })}${best && g.score ? ` ${t('newBest')}` : ''}`;
+      finishMini(Math.min(25, Math.floor(g.score / 4)), Math.min(90, 5 + g.score), message, drops, str);
+    },
+    update(g, dt) {
+      g.flash = g.flash.map((f) => Math.max(0, f - dt));
+      g.bump = g.bump.map((f) => Math.max(0, f - dt));
+      if (g.word) { g.word.time -= dt; if (g.word.time <= 0) g.word = null; }
+      g.spawn -= dt;
+      if (g.spawn <= 0) {
+        g.spawn = rhythmGap(g);
+        const lane = Math.floor(Math.random() * RHYTHM_LANES);
+        g.notes.push({ lane, y: -20 });
+        // Later on, sometimes two rice fall together.
+        if (g.score > 30 && Math.random() < 0.25) g.notes.push({ lane: (lane + 1 + Math.floor(Math.random() * 3)) % RHYTHM_LANES, y: -20 });
+      }
+      const speed = rhythmSpeed(g);
+      for (const n of g.notes) n.y += speed * dt;
+      const missed = g.notes.filter((n) => n.y > RHYTHM_HIT_Y + RHYTHM_GOOD);
+      if (missed.length) {
+        g.notes = g.notes.filter((n) => !missed.includes(n));
+        for (const _n of missed) { if (!mini) return; this.miss(g); }
+        this.info(g);
+      }
+    },
+    draw(g, c) {
+      c.fillStyle = '#231d33'; c.fillRect(0, 0, MINI_W, MINI_H);
+      for (let i = 0; i < RHYTHM_LANES; i++) {
+        const x = i * RHYTHM_LANE_W;
+        c.fillStyle = i % 2 ? '#2b2340' : '#271f3a';
+        c.fillRect(x, 0, RHYTHM_LANE_W, MINI_H);
+        if (g.flash[i]) { c.globalAlpha = g.flash[i] * 3; c.fillStyle = RHYTHM_COLORS[i]; c.fillRect(x, 0, RHYTHM_LANE_W, MINI_H); c.globalAlpha = 1; }
+        c.fillStyle = RHYTHM_COLORS[i];
+        c.fillRect(x + 4, RHYTHM_HIT_Y - 28, RHYTHM_LANE_W - 8, 4);
+      }
+      for (const n of g.notes) {
+        const cx = n.lane * RHYTHM_LANE_W + RHYTHM_LANE_W / 2;
+        c.drawImage(ART.rice, cx - 16, n.y - 10, 32, 20);
+      }
+      for (let i = 0; i < RHYTHM_LANES; i++) {
+        const cx = i * RHYTHM_LANE_W + RHYTHM_LANE_W / 2;
+        const lift = g.bump[i] ? 6 : 0;
+        c.drawImage(ART.bowl, 0, 0, 20, 14, cx - 32, RHYTHM_HIT_Y - 18 - lift, 64, 45);
+        if (usesKeyboard()) {
+          c.fillStyle = '#b9aec9'; c.font = 'bold 13px "Courier New", monospace'; c.textAlign = 'center';
+          c.fillText(RHYTHM_LABELS[i], cx, MINI_H - 10);
+        }
+      }
+      if (g.word) {
+        c.globalAlpha = Math.min(1, g.word.time * 3);
+        c.fillStyle = g.word.color; c.font = 'bold 26px "Courier New", monospace'; c.textAlign = 'center';
+        c.fillText(g.word.text, MINI_W / 2, 200);
+        c.globalAlpha = 1;
+      }
+      if (g.combo >= 5) {
+        c.fillStyle = '#ffc857'; c.font = 'bold 18px "Courier New", monospace'; c.textAlign = 'center';
+        c.fillText(t('rhythmCombo', { n: g.combo }), MINI_W / 2, 230);
+      }
+      c.textAlign = 'left';
+    },
+  };
+
   const TRAINING_GAMES = [
+    { key: 'rhythm', about: 'rhythmAbout', tiredOk: true, cost: TRAIN_COST, art: 'sprites/icons/bowl.png', start: () => startMini('rhythm', RICE_RHYTHM) },
     { key: 'riceWrap', about: 'riceWrapAbout', art: 'sprites/icons/rice.png', start: () => startTrain() },
     { key: 'whack', about: 'whackAbout', art: 'sprites/boss_broccoli.png', start: () => startWhack() },
     { key: 'order', about: 'orderAbout', art: 'sprites/icons/salmon.png', start: () => startOrder() },
@@ -1546,9 +1668,8 @@ const Game = (() => {
   });
   $('btnSettingsBack').onclick = () => show(settingsReturn);
   $('btnTrain').onclick = () => show('trainMenu');
-  $('btnMinis').onclick = () => show('minis');
   document.querySelectorAll('[data-home]').forEach((b) => { b.onclick = () => show('home'); });
-  $('btnMiniQuit').onclick = () => { stopMini(); show('minis'); };
+  $('btnMiniQuit').onclick = () => { stopMini(); show('trainMenu'); };
   const KEY_DIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' };
   const KEY_NAMES = { arrowup: 'up', arrowdown: 'down', arrowleft: 'left', arrowright: 'right', w: 'up', s: 'down', a: 'left', d: 'right' };
   const keyDir = (e) => KEY_DIRS[e.code] || KEY_NAMES[String(e.key).toLowerCase()];
@@ -1558,6 +1679,11 @@ const Game = (() => {
   };
   const parkourPress = () => { if (mini?.pad) mini.press(mini); };
   window.addEventListener('keydown', (e) => {
+    if (mini?.keys && e.code in RHYTHM_KEYS) {
+      if (!e.repeat) mini.press(mini, RHYTHM_KEYS[e.code]);
+      e.preventDefault();
+      return;
+    }
     if (!mini?.pad) return;
     if (keyDir(e)) { if (!e.repeat) holdDir(keyDir(e)); else mini.held[keyDir(e)] = true; if (mini.box && !e.repeat) parkourPress(); e.preventDefault(); }
     if (e.code === 'Space' || e.code === 'KeyZ' || e.code === 'Enter') { if (!e.repeat) parkourPress(); e.preventDefault(); }
@@ -1594,7 +1720,11 @@ const Game = (() => {
   $('stick').onpointercancel = releaseStick;
   document.addEventListener('contextmenu', (e) => { if (!e.target.matches('input')) e.preventDefault(); });
   $('btnJump').onpointerdown = (e) => { e.preventDefault(); parkourPress(); };
-  $('miniCanvas').onpointerdown = (e) => { miniPointer(e); if (mini?.pad && mini.box) parkourPress(); };
+  $('miniCanvas').onpointerdown = (e) => {
+    miniPointer(e);
+    if (mini?.pad && mini.box) parkourPress();
+    if (mini?.keys) mini.press(mini, Math.floor(mini.pointerX / RHYTHM_LANE_W));
+  };
   $('miniCanvas').onpointermove = miniPointer;
   $('btnBoss').onclick = () => show('bosses');
   $('btnBossBack').onclick = () => show('home');
