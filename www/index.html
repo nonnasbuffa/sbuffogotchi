@@ -68,6 +68,9 @@ html,body,button,canvas,#app *{-webkit-user-select:none;user-select:none;-webkit
 #friendList{flex:1;min-height:0;overflow-y:auto;gap:6px}.friendRow{display:grid;grid-template-columns:40px 1fr auto;gap:8px;align-items:center;background:var(--panel);border:3px solid var(--line);padding:4px 8px}
 .friendRow img{width:30px;height:41px;image-rendering:pixelated;justify-self:center}.friendRow small{display:block;color:var(--dim);font-size:12px}.friendRow .danger{color:var(--red);font-weight:bold}
 .friendRow .acts{display:flex;gap:6px}.friendRow .acts button{min-height:38px;padding:4px 10px;font-size:14px}.friendRow .acts button.heartBtn{color:var(--red);font-size:20px}
+.keyCatcher{position:fixed;left:-200px;top:0;width:1px;height:1px;opacity:0;pointer-events:none}.keysHint{display:none;margin:0;align-self:center;text-align:center;font-size:14px}
+@media (hover:hover) and (pointer:fine){.stick{display:none}.keysHint{display:block}}
+@media (max-height:700px){#s-minis,#s-bag,#s-trainMenu,#s-bosses{gap:7px}#s-minis p.dim,#s-bag p.dim{font-size:13px;margin:0}#s-minis h2,#s-bag h2{font-size:18px}#miniList .bossRow,#trainList .bossRow{grid-template-columns:56px 1fr 96px;padding:4px 8px}#miniList .bossRow img,#trainList .bossRow img{width:56px;height:56px}#bagList .bossRow img{width:40px;height:40px}#bagList .bossRow{grid-template-columns:40px 1fr 84px}}
 .toast{z-index:30;position:fixed;left:16px;right:16px;bottom:24px;max-width:448px;margin:auto;background:#000c;border:2px solid var(--gold);padding:10px;text-align:center;font-weight:bold;pointer-events:none;opacity:0;transition:opacity .2s}.toast.on{opacity:1}
 </style>
 </head>
@@ -156,9 +159,11 @@ html,body,button,canvas,#app *{-webkit-user-select:none;user-select:none;-webkit
     <canvas id="miniCanvas" width="320" height="440"></canvas>
     <div id="padControls">
       <div class="stick" id="stick"><div class="knob" id="knob"></div></div>
+      <p class="keysHint dim" data-i18n="keysHint"></p>
       <button class="main" id="btnJump" data-i18n="jumpBtn"></button>
     </div>
     <button id="btnMiniQuit" data-i18n="quit"></button>
+    <input id="keyCatcher" class="keyCatcher" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">
   </section>
 
   <section class="screen" id="s-train">

@@ -684,6 +684,13 @@ const Game = (() => {
     mini.begin(mini);
     show('mini');
     mini.raf = requestAnimationFrame(miniLoop);
+    catchKeys();
+  }
+  // Keyboard add-ons such as Vimium take letter keys (Vimium's D scrolls the page) unless a text box
+  // has focus, so on computers the walking games keep an invisible one focused.
+  const usesKeyboard = () => matchMedia('(hover: hover) and (pointer: fine)').matches;
+  function catchKeys() {
+    if (mini?.pad && usesKeyboard() && document.activeElement !== $('keyCatcher')) $('keyCatcher').focus({ preventScroll: true });
   }
   function miniLoop(t) {
     if (!mini) return;
@@ -699,6 +706,7 @@ const Game = (() => {
   function stopMini() {
     if (mini) cancelAnimationFrame(mini.raf);
     mini = null;
+    $('keyCatcher').blur();
   }
   function finishMini(joy, baseXp, message, drops) {
     const tired = mini.tired;
@@ -1406,6 +1414,9 @@ const Game = (() => {
   });
   window.addEventListener('keyup', (e) => { if (mini?.pad && keyDir(e)) mini.held[keyDir(e)] = false; });
   window.addEventListener('blur', () => { if (mini?.pad) mini.held = {}; });
+  window.addEventListener('focus', catchKeys);
+  $('s-mini').addEventListener('pointerup', catchKeys);
+  $('keyCatcher').addEventListener('input', () => { $('keyCatcher').value = ''; });
   const STICK_RANGE = 40;
   const STICK_DEAD = 0.2;
   function moveStick(e) {
