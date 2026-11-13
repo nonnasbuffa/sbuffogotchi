@@ -202,6 +202,7 @@ const Game = (() => {
     $('str').textContent = S.str; $('wins').textContent = S.bossWins; $('shields').textContent = S.shields;
     const u = Cloud.user();
     $('btnAccount').textContent = u ? u.name : t('signIn');
+    $('btnAdmin').hidden = !cheat('unlocked');
     const lowest = Math.min(S.food, S.energy, S.joy);
     $('say').textContent = lowest >= 25 ? '' : S.food === lowest ? t(hasItemFor('food') ? 'hungry' : 'noFood') : S.energy === lowest ? t(hasItemFor('energy') ? 'tired' : 'noEnergy') : t('lonely');
     const need = nextBossLevel();
@@ -351,7 +352,7 @@ const Game = (() => {
   function startOver() {
     if (S.items.diamond > 0 && !confirm(t('startOverConfirm'))) return;
     // Today's daily reward stays claimed, so dying can't be used to collect it again.
-    S = { ...fresh(), life: (S.life || 0) + 1, lastReward: S.lastReward, mortal: true, nextGolden: Date.now() + GOLDEN_EVERY_MS };
+    S = { ...fresh(), life: (S.life || 0) + 1, lastReward: S.lastReward, mortal: true, nextGolden: Date.now() + GOLDEN_EVERY_MS, cheats: S.cheats };
     const msg = checkIn();
     save(); sync();
     $('death').classList.remove('on');
@@ -377,7 +378,7 @@ const Game = (() => {
     music.style.marginTop = '12px';
     music.onclick = () => { Music.setEnabled(!Music.enabled()); renderSettings(); };
     list.append(music);
-    if (cheats.unlocked) list.append(adminButton(t('adminTitle'), () => show('admin')));
+    if (cheat('unlocked')) list.append(adminButton(t('adminTitle'), () => show('admin')));
   }
 
   // ----- daily reward -----
@@ -1355,15 +1356,20 @@ const Game = (() => {
   // ----- secret admin panel -----
   // Unlocked by searching the code below in Friends. Toggles are kept on this device only.
   const ADMIN_CODE = '0100000101000100010011010100100101001110'; // "ADMIN" in binary.
-  const ADMIN_KEY = 'sbuffogotchi.admin';
-  let cheats = {};
-  try { cheats = JSON.parse(localStorage.getItem(ADMIN_KEY)) || {}; } catch { /* locked */ }
-  const cheat = (name) => !!(cheats.unlocked && cheats[name]);
-  function saveCheats() {
-    try { localStorage.setItem(ADMIN_KEY, JSON.stringify(cheats)); } catch { /* lasts until the app closes */ }
+  // Kept in the save, so the panel stays unlocked on every device until it's locked again.
+  const ADMIN_KEY = 'sbuffogotchi.admin'; // b1.4.0 kept the unlock here, on one device only.
+  const cheats = () => (S.cheats ||= {});
+  const cheat = (name) => !!(S.cheats?.unlocked && S.cheats[name]);
+  function adoptOldCheats() {
+    try {
+      const old = JSON.parse(localStorage.getItem(ADMIN_KEY));
+      if (old?.unlocked && !S.cheats?.unlocked) S.cheats = old;
+      localStorage.removeItem(ADMIN_KEY);
+    } catch { /* nothing to bring over */ }
   }
+  const saveCheats = () => save();
   function unlockAdmin() {
-    cheats.unlocked = true;
+    cheats().unlocked = true;
     saveCheats();
     $('friendName').value = '';
     show('admin');
@@ -1394,12 +1400,12 @@ const Game = (() => {
     const list = $('adminList');
     list.replaceChildren();
     for (const [name, key] of ADMIN_TOGGLES) {
-      list.append(adminButton(`${t(key)}: ${t(cheats[name] ? 'musicOn' : 'musicOff')}`, () => {
-        cheats[name] = !cheats[name];
+      list.append(adminButton(`${t(key)}: ${t(cheats()[name] ? 'musicOn' : 'musicOff')}`, () => {
+        cheats()[name] = !cheats()[name];
+        if (name === 'god' && cheats().god) tick();
         saveCheats();
-        if (name === 'god' && cheats.god) { tick(); save(); }
         renderAdmin();
-      }, cheats[name] ? 'picked' : ''));
+      }, cheats()[name] ? 'picked' : ''));
     }
     list.append(heading('cheatItems'));
     for (const id of Object.keys(ITEMS)) {
@@ -1426,7 +1432,7 @@ const Game = (() => {
     }
     list.append(grid);
     list.append(adminButton(t('cheatLock'), () => {
-      cheats = {};
+      S.cheats = {};
       saveCheats();
       show('home');
     }, 'boss'));
@@ -1438,6 +1444,7 @@ const Game = (() => {
     if (Cloud.user()) {
       try { S = merge(S, await Cloud.pull()); } catch { toast(t('offlineLater')); }
     }
+    adoptOldCheats();
     // Saves from before dying existed get one top-up, so the update itself can't kill her.
     if (!S.mortal) {
       S.mortal = true;
@@ -1471,6 +1478,7 @@ const Game = (() => {
   $('btnRest').onclick = () => openBag('energy');
   $('btnBag').onclick = () => openBag(null);
   $('btnFriends').onclick = () => show('friends');
+  $('btnAdmin').onclick = () => show('admin');
   $('btnAddFriend').onclick = () => addFriend($('friendName').value);
   $('friendName').onkeydown = (e) => { if (e.key === 'Enter') addFriend($('friendName').value); };
   $('pet').onpointerdown = petHer;

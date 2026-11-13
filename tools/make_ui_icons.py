@@ -205,6 +205,16 @@ def friends():
     return outlined(im)
 
 
+def admin():
+    """A gold crown with a red gem, for the secret admin panel."""
+    im, d = canvas(16, 16)
+    d.polygon([(1, 5), (4, 8), (8, 2), (12, 8), (15, 5), (13, 13), (3, 13)], fill=GOLD)
+    d.rectangle([3, 11, 13, 13], fill=GOLD_DARK)
+    d.point([(1, 4), (8, 1), (15, 4)], fill=GOLD_LIGHT)
+    d.rectangle([7, 8, 9, 10], fill=RED)
+    return outlined(im)
+
+
 def diamond_bowl():
     im, d = canvas(16, 16)
     ice, sky, deep, glint = (214, 244, 255, 255), (120, 210, 245, 255), (60, 140, 215, 255), (255, 255, 255, 255)
@@ -238,7 +248,7 @@ if __name__ == '__main__':
         'star': star, 'bowl': small_bowl, 'apple': apple, 'bolt': bolt, 'smile': smile, 'moon': moon,
         'heart': heart, 'dumbbell': dumbbell, 'trophy': trophy, 'shield': shield, 'rice': rice_grain,
         'salmon': salmon_piece, 'avocado': avocado, 'shrimp': shrimp, 'edamame': edamame,
-        'diamond': diamond_bowl, 'popsicle': popsicle, 'phone': phone, 'monster': energy_can, 'gear': gear, 'backpack': backpack, 'friends': friends,
+        'diamond': diamond_bowl, 'popsicle': popsicle, 'phone': phone, 'monster': energy_can, 'gear': gear, 'backpack': backpack, 'friends': friends, 'admin': admin,
     }.items():
         draw().save(icons / f'{name}.png')
     golden_bowl().save(OUT / 'golden_bowl.png')
