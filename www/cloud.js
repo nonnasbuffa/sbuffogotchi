@@ -178,8 +178,52 @@ const Cloud = (() => {
     return res.ok;
   }
 
+  // ----- friendly duels -----
+  // A challenge holds the challenger's connection offer; the friend writes back an answer, then it's deleted.
+  async function createDuel(to, game, offer) {
+    const res = await authed(`${docsBase()}/duels`, {
+      method: 'POST',
+      body: JSON.stringify({ fields: {
+        from: { stringValue: me() }, fromName: { stringValue: session.name.trim() }, to: { stringValue: to },
+        game: { stringValue: game }, offer: { stringValue: offer }, at: { integerValue: String(Date.now() + offset) },
+      } }),
+    });
+    if (!res.ok) throw new Error(`duel ${res.status}`);
+    return (await res.json()).name.split('/').pop();
+  }
+  // null once the challenge is gone (declined, or cleaned up).
+  async function getDuel(id) {
+    const res = await fetch(`${docsBase()}/duels/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${await token()}` } });
+    if (res.status === 404 || res.status === 403) return null;
+    if (!res.ok) throw new Error(`duel ${res.status}`);
+    return { answer: (await res.json()).fields?.answer?.stringValue };
+  }
+  async function answerDuel(id, answer) {
+    const res = await authed(`${docsBase()}/duels/${encodeURIComponent(id)}?updateMask.fieldPaths=answer&currentDocument.exists=true`, {
+      method: 'PATCH', body: JSON.stringify({ fields: { answer: { stringValue: answer } } }),
+    });
+    if (!res.ok) throw new Error(`duel ${res.status}`);
+  }
+  async function deleteDuel(id) {
+    await fetch(`${docsBase()}/duels/${encodeURIComponent(id)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${await token()}` } });
+  }
+  async function incomingDuels() {
+    const res = await authed(`${docsBase()}:runQuery`, {
+      method: 'POST',
+      body: JSON.stringify({ structuredQuery: {
+        from: [{ collectionId: 'duels' }],
+        where: { fieldFilter: { field: { fieldPath: 'to' }, op: 'EQUAL', value: { stringValue: me() } } },
+        limit: 20,
+      } }),
+    });
+    return (await res.json()).filter((row) => row.document).map(({ document: d }) => ({
+      id: d.name.split('/').pop(), from: d.fields.from?.stringValue, fromName: d.fields.fromName?.stringValue,
+      game: d.fields.game?.stringValue, offer: d.fields.offer?.stringValue, at: Number(d.fields.at?.integerValue) || 0,
+    }));
+  }
+
   return {
-    configured, push, pull, accountCreated, sendGift, incomingGifts, claimGift,
+    configured, createDuel, getDuel, answerDuel, deleteDuel, incomingDuels, push, pull, accountCreated, sendGift, incomingGifts, claimGift,
     me, getProfile, pushProfile, setFriends, setHearts, addedMe,
     user: () => session,
     login: (n, p) => auth('signInWithPassword', n, p),

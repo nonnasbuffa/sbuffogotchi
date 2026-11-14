@@ -49,5 +49,31 @@ service cloud.firestore {
       allow read: if request.auth != null && (resource.data.to == myName() || resource.data.from == myName());
       allow delete: if request.auth != null && resource.data.to == myName();
     }
+    // Live battle challenges between friends: the challenger creates one, the friend answers it, either deletes it.
+    match /duels/{id} {
+      function myName() {
+        return request.auth.token.email.split('@')[0];
+      }
+      function friendsBothWays(from, to) {
+        let mine = get(/databases/$(database)/documents/profiles/$(from)).data;
+        let theirs = get(/databases/$(database)/documents/profiles/$(to)).data;
+        return to in mine.get('friends', []) && from in theirs.get('friends', []);
+      }
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['from', 'fromName', 'to', 'game', 'offer', 'at'])
+        && request.resource.data.from == myName()
+        && request.resource.data.to is string && request.resource.data.to != myName()
+        && request.resource.data.fromName is string && request.resource.data.fromName.size() < 60
+        && request.resource.data.game in ['pong', 'rhythm', 'race']
+        && request.resource.data.offer is string && request.resource.data.offer.size() < 20000
+        && request.resource.data.at is int
+        && exists(/databases/$(database)/documents/profiles/$(request.resource.data.to))
+        && friendsBothWays(myName(), request.resource.data.to);
+      allow read: if request.auth != null && (resource.data.to == myName() || resource.data.from == myName());
+      allow update: if request.auth != null && resource.data.to == myName()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answer'])
+        && request.resource.data.answer is string && request.resource.data.answer.size() < 20000;
+      allow delete: if request.auth != null && (resource.data.to == myName() || resource.data.from == myName());
+    }
   }
 }

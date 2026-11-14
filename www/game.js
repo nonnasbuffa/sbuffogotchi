@@ -899,13 +899,17 @@ const Game = (() => {
     walker: art('sprites/walker.png'), carrot: art('sprites/boss_carrot.png'), sprout: art('sprites/boss_sprout.png'),
   };
   let mini = null;
-  function startMini(title, game) {
+  // extra.duel is set for a live game against a friend: it's free and starts with a countdown.
+  function startMini(title, game, extra = {}) {
     tick();
     const cost = game.cost ?? MINI_COST;
-    const tired = S.energy <= cost;
-    if (!tired) payEnergy(cost);
-    $('miniTitle').textContent = t(title);
-    mini = { ...game, tired, pointerX: MINI_W / 2, raf: 0, last: performance.now() };
+    const tired = !extra.duel && S.energy <= cost;
+    if (!tired && !extra.duel) payEnergy(cost);
+    $('miniTitle').textContent = extra.duel ? `${t(title)} · ${t('vs', { name: extra.duel.friendName })}` : t(title);
+    $('btnJump').textContent = t(game.padBtn || 'jumpBtn');
+    document.querySelector('#padControls .keysHint').textContent = t(game.keysHint || 'keysHint');
+    mini = { ...game, tired, pointerX: MINI_W / 2, raf: 0, last: performance.now(), ...extra };
+    if (extra.duel) mini.countdown = 3;
     $('s-mini').classList.toggle('pad', !!game.pad);
     mini.begin(mini);
     show('mini');
@@ -922,10 +926,22 @@ const Game = (() => {
     if (!mini) return;
     const dt = Math.min(0.05, (t - mini.last) / 1000);
     mini.last = t;
-    mini.update(mini, dt);
-    if (!mini) return;
     const c = $('miniCanvas').getContext('2d');
     c.imageSmoothingEnabled = false;
+    // 3, 2, 1, GO! before races and friendly battles.
+    if (mini.countdown > 0) {
+      mini.countdown -= dt;
+      mini.draw(mini, c);
+      const n = Math.ceil(mini.countdown);
+      c.fillStyle = '#231d3388'; c.fillRect(0, 0, MINI_W, MINI_H);
+      c.font = 'bold 64px "Courier New", monospace'; c.textAlign = 'center'; c.fillStyle = '#ffc857';
+      c.fillText(n > 0 ? String(n) : I18n.t('countGo'), MINI_W / 2, MINI_H / 2);
+      c.textAlign = 'left';
+      mini.raf = requestAnimationFrame(miniLoop);
+      return;
+    }
+    mini.update(mini, dt);
+    if (!mini) return;
     mini.draw(mini, c);
     mini.raf = requestAnimationFrame(miniLoop);
   }
@@ -985,27 +1001,71 @@ const Game = (() => {
     begin(g) {
       g.you = 0; g.cpu = 0; g.px = MINI_W / 2; g.cx = MINI_W / 2;
       g.py = MINI_H - 30; g.cy = 30;
+      g.remoteX = MINI_W / 2; g.sendIn = 0;
       pongServe(g, true);
-      $('miniInfo').textContent = t('pongScore', { a: 0, b: 0 });
+      this.info(g);
+    },
+    info(g) {
+      $('miniInfo').textContent = g.duel ? t('duelScore', { a: g.you, b: g.cpu, name: g.duel.friendName }) : t('pongScore', { a: g.you, b: g.cpu });
+    },
+    send(g, dt) {
+      g.sendIn -= dt;
+      if (g.sendIn > 0) return;
+      g.sendIn = 1 / 30;
+      const b = g.ball;
+      if (g.duel.host) g.duel.send({ t: 'pong', bx: b.x, by: b.y, vx: b.vx, vy: b.vy, px: g.px, you: g.you, cpu: g.cpu, wait: g.wait });
+      else g.duel.send({ t: 'paddle', x: g.px });
+    },
+    // The friend's copy: draws the host's ball turned upside down, so both players play from the bottom.
+    follow(g, dt) {
+      this.send(g, dt);
+      const s = g.state;
+      if (!s) return;
+      g.cx = MINI_W - s.px;
+      if (s.wait > 0) return;
+      const b = g.ball;
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      if (b.x < RICE_R) { b.x = RICE_R; b.vx = Math.abs(b.vx); }
+      if (b.x > MINI_W - RICE_R) { b.x = MINI_W - RICE_R; b.vx = -Math.abs(b.vx); }
+    },
+    net(g, msg) {
+      if (msg.t === 'paddle') g.remoteX = msg.x;
+      if (msg.t === 'pong') {
+        g.state = msg;
+        g.ball = { x: MINI_W - msg.bx, y: MINI_H - msg.by, vx: -msg.vx, vy: -msg.vy };
+        if (g.you !== msg.cpu || g.cpu !== msg.you) { g.you = msg.cpu; g.cpu = msg.you; this.info(g); }
+      }
+      if (msg.t === 'pongEnd') finishDuel(msg.hostWon ? 'lose' : 'win', t(msg.hostWon ? 'duelPongLose' : 'duelPongWin', { name: g.duel.friendName }));
     },
     update(g, dt) {
       g.px = Math.max(PIZZA_R, Math.min(MINI_W - PIZZA_R, g.pointerX));
+      if (g.duel && !g.duel.host) return this.follow(g, dt);
+      if (g.duel) this.send(g, dt);
       if (g.wait > 0) { g.wait -= dt; return; }
       const b = g.ball;
-      const aim = b.vy < 0 ? b.x : MINI_W / 2;
-      const reach = (120 + g.you * 18) * dt;
-      g.cx += Math.max(-reach, Math.min(reach, aim - g.cx));
+      if (g.duel) g.cx = MINI_W - g.remoteX;
+      else {
+        const aim = b.vy < 0 ? b.x : MINI_W / 2;
+        const reach = (120 + g.you * 18) * dt;
+        g.cx += Math.max(-reach, Math.min(reach, aim - g.cx));
+      }
       b.x += b.vx * dt; b.y += b.vy * dt;
       if (b.x < RICE_R) { b.x = RICE_R; b.vx = Math.abs(b.vx); }
       if (b.x > MINI_W - RICE_R) { b.x = MINI_W - RICE_R; b.vx = -Math.abs(b.vx); }
       pongBounce(b, g.px, g.py);
       pongBounce(b, g.cx, g.cy);
       // Invincible: the rice bounces back off her edge instead of getting past.
-      if (cheat('invincible') && b.y > MINI_H - RICE_R) { b.y = MINI_H - RICE_R; b.vy = -Math.abs(b.vy); }
+      if (cheat('invincible') && !g.duel && b.y > MINI_H - RICE_R) { b.y = MINI_H - RICE_R; b.vy = -Math.abs(b.vy); }
       if (b.y < -12 || b.y > MINI_H + 12) {
         const youScored = b.y < 0;
         if (youScored) g.you += 1; else g.cpu += 1;
-        $('miniInfo').textContent = t('pongScore', { a: g.you, b: g.cpu });
+        this.info(g);
+        if (g.duel && (g.you >= PONG_WIN || g.cpu >= PONG_WIN)) {
+          const won = g.you >= PONG_WIN;
+          g.duel.send({ t: 'pong', bx: b.x, by: b.y, vx: 0, vy: 0, px: g.px, you: g.you, cpu: g.cpu, wait: 1 });
+          g.duel.send({ t: 'pongEnd', hostWon: won });
+          return finishDuel(won ? 'win' : 'lose', t(won ? 'duelPongWin' : 'duelPongLose', { name: g.duel.friendName }));
+        }
         if (g.you >= PONG_WIN) return finishMini(15, 20, t('pongWin'), 2);
         if (g.cpu >= PONG_WIN) return finishMini(5, 5, t('pongLose'), Math.random() < 0.5 ? 1 : 0);
         pongServe(g, !youScored);
@@ -1256,24 +1316,41 @@ const Game = (() => {
     KeyD: 0, KeyF: 1, KeyJ: 2, KeyK: 3,
   };
   const RHYTHM_LABELS = ['D ←', 'F ↓', 'J ↑', 'K →'];
-  const rhythmSpeed = (g) => Math.min(560, 170 + g.score * 3.2);
-  const rhythmGap = (g) => Math.max(0.2, 0.78 - g.score * 0.0075);
+  // In a battle the pace follows the clock instead of the score, so both players get the same rice.
+  const rhythmLevel = (g) => (g.duel ? g.time * 1.1 : g.score);
+  const rhythmSpeed = (g) => Math.min(560, 170 + rhythmLevel(g) * 3.2);
+  const rhythmGap = (g) => Math.max(0.2, 0.78 - rhythmLevel(g) * 0.0075);
   const RICE_RHYTHM = {
     keys: true,
     cost: TRAIN_COST,
     begin(g) {
       g.score = 0; g.combo = 0; g.bestCombo = 0; g.misses = 0; g.notes = []; g.spawn = 1.2;
       g.flash = [0, 0, 0, 0]; g.bump = [0, 0, 0, 0]; g.word = null;
+      g.time = 0; g.rand = g.duel ? g.duel.rand : Math.random; g.rivalScore = 0; g.rivalOut = null; g.out = false;
       this.info(g);
     },
     info(g) {
-      $('miniInfo').textContent = t('rhythmInfo', { n: g.score, c: g.combo, l: '♥'.repeat(Math.max(0, RHYTHM_MISSES - g.misses)) });
+      const l = '♥'.repeat(Math.max(0, RHYTHM_MISSES - g.misses));
+      $('miniInfo').textContent = g.duel ? t('duelRhythmInfo', { n: g.score, r: g.rivalScore, name: g.duel.friendName, l })
+        : t('rhythmInfo', { n: g.score, c: g.combo, l });
+    },
+    net(g, msg) {
+      if (msg.t === 'rscore') { g.rivalScore = msg.n; this.info(g); }
+      if (msg.t === 'rout') { g.rivalScore = msg.n; g.rivalOut = msg.n; this.info(g); this.settle(g); }
+    },
+    // Once both players are out of hearts, the higher score wins.
+    settle(g) {
+      if (!g.out || g.rivalOut === null) return;
+      const name = g.duel.friendName;
+      if (g.score === g.rivalOut) finishDuel('draw', t('duelDraw'));
+      else if (g.score > g.rivalOut) finishDuel('win', t('duelRhythmWin', { name }));
+      else finishDuel('lose', t('duelRhythmLose', { name }));
     },
     say(g, key, color) { g.word = { text: t(key), color, time: 0.5 }; },
     miss(g) {
       g.combo = 0;
       this.say(g, 'rhythmMiss', '#e8604c');
-      if (cheat('invincible')) return;
+      if (cheat('invincible') && !g.duel) return;
       g.misses += 1;
       if (g.misses >= RHYTHM_MISSES) this.end(g);
     },
@@ -1289,9 +1366,15 @@ const Game = (() => {
       g.bump[lane] = 0.15;
       const perfect = Math.abs(hit.y - RHYTHM_HIT_Y) <= RHYTHM_PERFECT;
       this.say(g, perfect ? 'rhythmPerfect' : 'rhythmGood', perfect ? '#ffc857' : '#f6eedd');
+      if (g.duel) g.duel.send({ t: 'rscore', n: g.score });
       this.info(g);
     },
     end(g) {
+      if (g.duel) {
+        g.out = true; g.notes = [];
+        g.duel.send({ t: 'rout', n: g.score });
+        return this.settle(g);
+      }
       const best = g.score > (S.rhythmBest || 0);
       if (best) S.rhythmBest = g.score;
       // The more rice, the bigger the prize.
@@ -1301,16 +1384,19 @@ const Game = (() => {
       finishMini(Math.min(25, Math.floor(g.score / 4)), Math.min(90, 5 + g.score), message, drops, str);
     },
     update(g, dt) {
+      if (g.out) return;
+      g.time += dt;
       g.flash = g.flash.map((f) => Math.max(0, f - dt));
       g.bump = g.bump.map((f) => Math.max(0, f - dt));
       if (g.word) { g.word.time -= dt; if (g.word.time <= 0) g.word = null; }
       g.spawn -= dt;
       if (g.spawn <= 0) {
         g.spawn = rhythmGap(g);
-        const lane = Math.floor(Math.random() * RHYTHM_LANES);
+        const lane = Math.floor(g.rand() * RHYTHM_LANES);
         g.notes.push({ lane, y: -20 });
         // Later on, sometimes two rice fall together.
-        if (g.score > 30 && Math.random() < 0.25) g.notes.push({ lane: (lane + 1 + Math.floor(Math.random() * 3)) % RHYTHM_LANES, y: -20 });
+        const pair = g.rand() < 0.25, other = Math.floor(g.rand() * 3);
+        if (rhythmLevel(g) > 30 && pair) g.notes.push({ lane: (lane + 1 + other) % RHYTHM_LANES, y: -20 });
       }
       const speed = rhythmSpeed(g);
       for (const n of g.notes) n.y += speed * dt;
@@ -1350,9 +1436,360 @@ const Game = (() => {
         c.fillText(g.word.text, MINI_W / 2, 200);
         c.globalAlpha = 1;
       }
-      if (g.combo >= 5) {
+      if (g.out) {
+        c.fillStyle = '#ffc857'; c.font = 'bold 18px "Courier New", monospace'; c.textAlign = 'center';
+        c.fillText(t('duelWaitRival', { name: g.duel.friendName }), MINI_W / 2, 230);
+      } else if (g.combo >= 5) {
         c.fillStyle = '#ffc857'; c.font = 'bold 18px "Courier New", monospace'; c.textAlign = 'center';
         c.fillText(t('rhythmCombo', { n: g.combo }), MINI_W / 2, 230);
+      }
+      c.textAlign = 'left';
+    },
+  };
+
+  // ----- Wipe-Uff -----
+  // A poke-bowl kart race through a big vegetable garden, drawn as a pseudo-3D road (each slice of track
+  // is projected onto the screen, nearest last). Three laps against three veggie bots, or against a friend.
+  const WU = {
+    SEG: 200, ROAD: 1800, CAM_H: 900, DEPTH: 1 / Math.tan((50 * Math.PI) / 180), DRAW: 110,
+    MAX: 8000, LAPS: 3, CENTRI: 0.3, RUMBLE: 3, BOX_RESPAWN: 3,
+  };
+  WU.ACCEL = WU.MAX / 4; WU.OFF_DECEL = WU.MAX / 1.6; WU.OFF_LIMIT = WU.MAX / 4;
+  const WU_ART = Object.fromEntries(['kart', 'cabbage', 'tomato', 'sunflower', 'carrots', 'fence', 'box', 'wasabi', 'chili', 'soy', 'soybottle']
+    .map((n) => [n, art(`sprites/wipeuff/${n}.png`)]));
+  // World widths of the scenery, so everything keeps its size as it comes closer.
+  const WU_SIZE = { cabbage: 700, tomato: 520, sunflower: 600, carrots: 800, fence: 1100, box: 330, soy: 600, chili: 330, kart: 620 };
+  const WU_ITEMS = ['wasabi', 'chili', 'soy'];
+  const WU_BOTS = [
+    { name: 'bossBroccoli', art: 'broccoli', skill: 0.9 },
+    { name: 'bossCarrot', art: 'carrot', skill: 0.87 },
+    { name: 'bossSprout', art: 'sprout', skill: 0.84 },
+  ];
+  const ease = { in: (a, b, p) => a + (b - a) * p * p, inOut: (a, b, p) => a + (b - a) * (-Math.cos(p * Math.PI) / 2 + 0.5) };
+  // The same garden circuit every time: built once from straights, bends and gentle hills.
+  const WU_TRACK = (() => {
+    const segs = [];
+    const lastY = () => (segs.length ? segs[segs.length - 1].p2.y : 0);
+    const add = (curve, y) => {
+      const n = segs.length;
+      segs.push({ i: n, p1: { z: n * WU.SEG, y: lastY() }, p2: { z: (n + 1) * WU.SEG, y }, curve, sprites: [], boxes: [] });
+    };
+    const road = (enter, hold, leave, curve, hill) => {
+      const y0 = lastY(), y1 = y0 + hill * WU.SEG, total = enter + hold + leave;
+      for (let n = 0; n < enter; n++) add(ease.in(0, curve, n / enter), ease.inOut(y0, y1, (n + 1) / total));
+      for (let n = 0; n < hold; n++) add(curve, ease.inOut(y0, y1, (enter + n + 1) / total));
+      for (let n = 0; n < leave; n++) add(ease.inOut(curve, 0, n / leave), ease.inOut(y0, y1, (enter + hold + n + 1) / total));
+    };
+    road(30, 40, 30, 0, 0);
+    road(25, 50, 25, 2, 10);
+    road(20, 30, 20, 0, -10);
+    road(25, 40, 25, -3, 0);
+    road(25, 25, 25, 2, 15);
+    road(25, 25, 25, -2, -15);
+    road(30, 60, 30, -2, 0);
+    road(20, 20, 20, 3, 8);
+    road(20, 40, 20, 0, -8);
+    road(25, 50, 25, 2.5, 0);
+    road(25, 30, 25, -1.5, 0);
+    road(30, 50, 30, 0, -lastY() / WU.SEG);
+    // Scenery along both sides, picked by a fixed pattern so the garden never changes.
+    const kinds = ['cabbage', 'tomato', 'sunflower', 'carrots', 'cabbage', 'tomato'];
+    for (let i = 20; i < segs.length; i += 6) {
+      const k = kinds[(i * 7) % kinds.length];
+      segs[i].sprites.push({ art: k, x: -(1.35 + ((i * 13) % 9) / 10) });
+      segs[(i + 3) % segs.length].sprites.push({ art: kinds[(i * 5 + 2) % kinds.length], x: 1.35 + ((i * 11) % 9) / 10 });
+    }
+    for (let i = 0; i < segs.length; i += 40) {
+      segs[i].sprites.push({ art: 'fence', x: -1.25 }, { art: 'fence', x: 1.25 });
+    }
+    // Rows of item crates.
+    for (let i = 60; i < segs.length - 20; i += 140) for (const x of [-0.55, 0, 0.55]) segs[i].boxes.push({ x, gone: 0 });
+    return { segs, length: segs.length * WU.SEG };
+  })();
+  const wuSeg = (z) => WU_TRACK.segs[Math.floor(((z % WU_TRACK.length) + WU_TRACK.length) % WU_TRACK.length / WU.SEG) % WU_TRACK.segs.length];
+  const wuDist = (k) => k.lap * WU_TRACK.length + k.z;
+  const wuOrdinal = (n) => t(`wuPlace${n}`);
+  function wuProject(p, camX, camY, camZ, roadW) {
+    const cz = p.z - camZ;
+    p.scale = WU.DEPTH / cz;
+    p.sx = Math.round(MINI_W / 2 + p.scale * (p.x - camX) * MINI_W / 2);
+    p.sy = Math.round(MINI_H / 2 - p.scale * (p.y - camY) * MINI_H / 2);
+    p.sw = Math.round(p.scale * roadW * MINI_W / 2);
+    p.cz = cz;
+  }
+  function wuQuad(c, color, x1, y1, w1, x2, y2, w2) {
+    c.fillStyle = color;
+    c.beginPath();
+    c.moveTo(x1 - w1, y1); c.lineTo(x2 - w2, y2); c.lineTo(x2 + w2, y2); c.lineTo(x1 + w1, y1);
+    c.closePath(); c.fill();
+  }
+  // Racers are the player ("me"), the bots, and in a friendly race the friend.
+  function wuRacer(fields) {
+    return { z: 0, x: 0, speed: 0, lap: 0, spin: 0, boost: 0, item: null, done: false, ...fields };
+  }
+  function wuSpinOut(k) {
+    if (k.me && cheat('invincible') && !mini?.duel) return;
+    k.spin = 1.2; k.speed *= 0.35;
+  }
+  const WIPE_UFF = {
+    pad: true,
+    padBtn: 'wuItem',
+    keysHint: 'wuKeysHint',
+    begin(g) {
+      g.held = {}; g.time = 0; g.countdown = 3; g.msg = null; g.shots = []; g.slicks = []; g.sky = 0; g.sendIn = 0;
+      for (const s of WU_TRACK.segs) for (const b of s.boxes) b.gone = 0;
+      g.driver = art(`${skinNow().dir}/idle_sheet.png`);
+      g.me = wuRacer({ me: true, name: Cloud.user()?.name || t('guestName'), x: g.duel ? (g.duel.host ? -0.35 : 0.35) : 0.3, z: 0 });
+      g.racers = [g.me];
+      if (g.duel) {
+        g.rival = wuRacer({ name: g.duel.friendName, x: g.duel.host ? 0.35 : -0.35, z: 0, driver: art(`${g.duel.rivalSkin || 'sprites'}/idle_sheet.png`), remote: true });
+        g.racers.push(g.rival);
+      } else {
+        WU_BOTS.forEach((b, i) => g.racers.push(wuRacer({
+          name: t(b.name), bot: b, x: [-0.5, 0.5, -0.1][i], z: (i + 1) * WU.SEG * 3, driverArt: ART[b.art] || art(`sprites/boss_${b.art}.png`),
+          itemIn: 6 + Math.random() * 6,
+        })));
+        g.me.z = 0;
+      }
+      this.info(g);
+    },
+    place(g, k) { return 1 + g.racers.filter((o) => o !== k && wuDist(o) > wuDist(k)).length; },
+    info(g) {
+      const lap = Math.min(WU.LAPS, g.me.lap + 1);
+      $('miniInfo').textContent = t('wuInfo', { l: lap, n: WU.LAPS, p: wuOrdinal(this.place(g, g.me)) });
+    },
+    say(g, text) { g.msg = { text, time: 1.8 }; },
+    press(g) {
+      const k = g.me;
+      if (!k.item || g.countdown > 0 || k.done) return;
+      this.useItem(g, k);
+    },
+    useItem(g, k) {
+      const item = k.item;
+      k.item = null;
+      if (item === 'wasabi') { k.boost = 1.6; k.speed = Math.max(k.speed, WU.MAX); if (k.me) this.say(g, t('wuBoost')); }
+      if (item === 'soy') {
+        const slick = { z: (k.z - 350 + WU_TRACK.length) % WU_TRACK.length, x: k.x, by: k };
+        g.slicks.push(slick);
+        if (g.duel && k.me) g.duel.send({ t: 'slick', z: slick.z, x: slick.x });
+      }
+      if (item === 'chili') {
+        // The chili flies after whoever is just ahead.
+        const ahead = g.racers.filter((o) => o !== k && !o.done && wuDist(o) > wuDist(k)).sort((a, b) => wuDist(a) - wuDist(b))[0];
+        if (!ahead) { if (k.me) this.say(g, t('wuNoTarget')); return; }
+        g.shots.push({ z: k.z, lap: k.lap, x: k.x, from: k, target: ahead });
+      }
+    },
+    giveItem(g, k) {
+      // Racers further back get the better items.
+      const place = this.place(g, k);
+      const pool = place === 1 ? ['soy', 'soy', 'wasabi'] : place === g.racers.length ? ['chili', 'wasabi', 'chili'] : WU_ITEMS;
+      k.item = pool[Math.floor(Math.random() * pool.length)];
+      if (k.me) this.say(g, t(`wuGot_${k.item}`));
+    },
+    drive(g, k, dt, steer) {
+      const seg = wuSeg(k.z);
+      const top = WU.MAX * (k.boost > 0 ? 1.35 : 1) * (k.bot ? k.bot.skill * k.rubber : 1);
+      if (k.spin > 0) { k.spin -= dt; k.speed = Math.max(0, k.speed - WU.ACCEL * dt); } else k.speed = Math.min(top, k.speed + WU.ACCEL * dt * (k.speed > top ? -1 : 1));
+      k.boost = Math.max(0, k.boost - dt);
+      const pct = k.speed / WU.MAX;
+      k.x += steer * dt * 2.2 * Math.min(1, pct + 0.2);
+      k.x -= dt * 2 * pct * seg.curve * WU.CENTRI;
+      if (Math.abs(k.x) > 1 && k.speed > WU.OFF_LIMIT && !k.boost) k.speed = Math.max(WU.OFF_LIMIT, k.speed - WU.OFF_DECEL * dt);
+      k.x = Math.max(-2, Math.min(2, k.x));
+      k.z += k.speed * dt;
+      if (k.z >= WU_TRACK.length) { k.z -= WU_TRACK.length; k.lap += 1; }
+      // Item crates and soy slicks under the wheels.
+      const here = wuSeg(k.z);
+      for (const b of here.boxes) if (!b.gone && Math.abs(b.x - k.x) < 0.3) { b.gone = WU.BOX_RESPAWN; if (!k.item && !k.remote) this.giveItem(g, k); }
+      for (const s of g.slicks) if (s.by !== k || s.armed) {
+        if (Math.abs(((s.z - k.z + WU_TRACK.length * 1.5) % WU_TRACK.length) - WU_TRACK.length / 2) < 150 && Math.abs(s.x - k.x) < 0.3) {
+          s.hit = true; wuSpinOut(k);
+          if (k.me) this.say(g, t('wuSlipped'));
+        }
+      }
+    },
+    update(g, dt) {
+      g.time += dt;
+      if (g.msg) { g.msg.time -= dt; if (g.msg.time <= 0) g.msg = null; }
+      for (const s of WU_TRACK.segs) for (const b of s.boxes) b.gone = Math.max(0, b.gone - dt);
+      g.slicks = g.slicks.filter((s) => !s.hit);
+      for (const s of g.slicks) if (!s.armed && Math.abs(wuDist(s.by) - s.z) > 0) s.armed = (s.by.z - s.z + WU_TRACK.length) % WU_TRACK.length > 600;
+      const me = g.me;
+      if (!me.done) {
+        let steer = (g.held.right ? 1 : 0) - (g.held.left ? 1 : 0);
+        if (g.stick) steer = g.stick.x;
+        const before = me.lap;
+        this.drive(g, me, dt, steer);
+        if (me.lap !== before && me.lap < WU.LAPS) this.say(g, me.lap === WU.LAPS - 1 ? t('wuFinalLap') : t('wuLap', { n: me.lap + 1 }));
+        if (me.lap >= WU.LAPS) return this.finish(g);
+      }
+      g.sky += dt * (me.speed / WU.MAX) * wuSeg(me.z).curve * 0.06;
+      // Bots keep up with the player a little (rubber band) so races stay close.
+      for (const k of g.racers) {
+        if (!k.bot) continue;
+        const gap = wuDist(k) - wuDist(me);
+        k.rubber = gap < -3000 ? 1.12 : gap > 3000 ? 0.94 : 1;
+        const seg = wuSeg(k.z + WU.SEG * 6);
+        k.aim = k.aim ?? k.x;
+        if (Math.random() < dt * 0.5) k.aim = (Math.random() - 0.5) * 1.3;
+        const steer = Math.max(-1, Math.min(1, (k.aim - seg.curve * 0.12 - k.x) * 2));
+        this.drive(g, k, dt, steer);
+        k.itemIn -= dt;
+        if (!k.item && k.itemIn <= 0) { k.item = WU_ITEMS[Math.floor(Math.random() * 3)]; k.itemIn = 7 + Math.random() * 7; }
+        if (k.item && Math.random() < dt * 0.4) this.useItem(g, k);
+        if (k.lap >= WU.LAPS && !k.done) k.done = g.time;
+      }
+      // Bumping into each other slows down the one behind.
+      for (const k of g.racers) for (const o of g.racers) {
+        if (k === o || k.remote) continue;
+        const dz = wuDist(o) - wuDist(k);
+        if (dz > 0 && dz < 260 && Math.abs(o.x - k.x) < 0.35 && k.speed > o.speed) { k.speed = o.speed * 0.9; k.x += k.x < o.x ? -0.05 : 0.05; }
+      }
+      // Chilis home in on their target.
+      for (const s of g.shots) {
+        const tgt = s.target;
+        s.z += WU.MAX * 1.7 * dt;
+        if (s.z >= WU_TRACK.length) { s.z -= WU_TRACK.length; s.lap += 1; }
+        s.x += (tgt.x - s.x) * Math.min(1, dt * 6);
+        if (s.lap * WU_TRACK.length + s.z >= wuDist(tgt)) {
+          s.hit = true;
+          if (tgt.remote) g.duel.send({ t: 'chili' }); else wuSpinOut(tgt);
+          if (s.from.me) this.say(g, t('wuHit', { name: tgt.name }));
+          else if (tgt.me) this.say(g, t('wuGotHit', { name: s.from.name }));
+        }
+      }
+      g.shots = g.shots.filter((s) => !s.hit);
+      if (g.duel) {
+        g.sendIn -= dt;
+        if (g.sendIn <= 0) { g.sendIn = 1 / 15; g.duel.send({ t: 'pos', z: me.z, x: me.x, lap: me.lap, speed: me.speed }); }
+        const r = g.rival;
+        if (r.net) { // Glide towards the friend's last known spot.
+          r.speed = r.net.speed; r.lap = r.net.lap;
+          let dz = r.net.z - r.z;
+          if (Math.abs(dz) > WU_TRACK.length / 2) dz -= Math.sign(dz) * WU_TRACK.length;
+          r.z = (r.z + dz * Math.min(1, dt * 10) + r.speed * dt * 0.3 + WU_TRACK.length) % WU_TRACK.length;
+          r.x += (r.net.x - r.x) * Math.min(1, dt * 10);
+        }
+      }
+      this.info(g);
+    },
+    net(g, msg) {
+      if (msg.t === 'pos') g.rival.net = msg;
+      if (msg.t === 'chili') { wuSpinOut(g.me); this.say(g, t('wuGotHit', { name: g.rival.name })); }
+      if (msg.t === 'slick') g.slicks.push({ z: msg.z, x: msg.x, by: g.rival, armed: true });
+      if (msg.t === 'raceDone') finishDuel('lose', t('wuDuelLost', { name: g.rival.name }));
+    },
+    finish(g) {
+      const me = g.me;
+      me.done = g.time;
+      if (g.duel) {
+        g.duel.send({ t: 'raceDone' });
+        return finishDuel('win', t('wuDuelWon'));
+      }
+      const place = this.place(g, me);
+      const prize = [[20, 40, 3, 300], [12, 25, 2, 150], [8, 15, 1, 75], [5, 8, 0, 25]][place - 1];
+      const tired = mini.tired;
+      if (!tired) S.poken = (S.poken || 0) + prize[3];
+      finishMini(prize[0], prize[1], `${t('wuDone', { p: wuOrdinal(place) })}${tired ? '' : ` · +${prize[3]} Poken ·`}`, prize[2]);
+    },
+    draw(g, c) {
+      // Sky, distant hedges that slide sideways on bends, then the garden path.
+      const sky = c.createLinearGradient(0, 0, 0, MINI_H / 2);
+      sky.addColorStop(0, '#7cc8f4'); sky.addColorStop(1, '#d6f0ff');
+      c.fillStyle = sky; c.fillRect(0, 0, MINI_W, MINI_H);
+      c.fillStyle = '#fff';
+      for (let i = 0; i < 4; i++) {
+        const x = ((i * 110 - g.sky * 120) % 440 + 440) % 440 - 60;
+        c.fillRect(x, 40 + (i % 2) * 30, 50, 10); c.fillRect(x + 10, 32 + (i % 2) * 30, 28, 8);
+      }
+      c.fillStyle = '#4d9a52';
+      for (let i = 0; i < 9; i++) {
+        const x = ((i * 50 - g.sky * 300) % 450 + 450) % 450 - 60;
+        c.beginPath(); c.arc(x, MINI_H / 2 + 6, 34 + (i % 3) * 8, Math.PI, 0); c.fill();
+      }
+      c.fillStyle = '#6fbf5a'; c.fillRect(0, MINI_H / 2, MINI_W, MINI_H / 2);
+      const me = g.me;
+      const base = wuSeg(me.z);
+      const pct = (me.z % WU.SEG) / WU.SEG;
+      const camZ = me.z - WU.CAM_H * WU.DEPTH * 1.6;
+      const camSeg = wuSeg(camZ);
+      const camY = WU.CAM_H + camSeg.p1.y + (camSeg.p2.y - camSeg.p1.y) * ((((camZ % WU.SEG) + WU.SEG) % WU.SEG) / WU.SEG);
+      let maxY = MINI_H, x = 0, dx = -(base.curve * pct);
+      const drawn = [];
+      for (let n = 0; n < WU.DRAW; n++) {
+        const seg = WU_TRACK.segs[(base.i + n) % WU_TRACK.segs.length];
+        const loop = seg.i < base.i ? WU_TRACK.length : 0;
+        const p1 = { x: 0, y: seg.p1.y, z: seg.p1.z + loop }, p2 = { x: 0, y: seg.p2.y, z: seg.p2.z + loop };
+        wuProject(p1, me.x * WU.ROAD - x, camY, camZ, WU.ROAD);
+        wuProject(p2, me.x * WU.ROAD - x - dx, camY, camZ, WU.ROAD);
+        x += dx; dx += seg.curve;
+        seg.view = { p1, clip: maxY };
+        drawn.push(seg);
+        if (p1.cz <= WU.DEPTH || p2.sy >= p1.sy || p2.sy >= maxY) continue;
+        const band = Math.floor(seg.i / WU.RUMBLE) % 2;
+        c.fillStyle = band ? '#6fbf5a' : '#62b04f';
+        c.fillRect(0, p2.sy, MINI_W, p1.sy - p2.sy + 1);
+        wuQuad(c, band ? '#d94c3c' : '#f6eedd', p1.sx, p1.sy, p1.sw * 1.12, p2.sx, p2.sy, p2.sw * 1.12);
+        wuQuad(c, band ? '#c9a46a' : '#c09a60', p1.sx, p1.sy, p1.sw, p2.sx, p2.sy, p2.sw);
+        if (band) wuQuad(c, '#efe2c2', p1.sx, p1.sy, p1.sw * 0.03, p2.sx, p2.sy, p2.sw * 0.03);
+        if (seg.i < 3) wuQuad(c, seg.i % 2 ? '#222' : '#fff', p1.sx, p1.sy, p1.sw, p2.sx, p2.sy, p2.sw);
+        maxY = p1.sy;
+      }
+      // Everything standing on the track, far to near, cut off where a hill hides it.
+      const sprite = (img, worldW, seg, offX, lift = 0) => {
+        const p = seg.view.p1;
+        if (!img.complete || !img.naturalWidth || p.cz <= WU.DEPTH) return;
+        const w = worldW * p.scale * MINI_W / 2;
+        const h = (w * img.naturalHeight) / img.naturalWidth;
+        const sx = p.sx + p.sw * offX - w / 2;
+        const sy = p.sy - h - lift * p.scale * MINI_H / 2;
+        const clipH = Math.max(0, Math.min(h, seg.view.clip - sy));
+        if (clipH <= 0 || w < 1) return;
+        c.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight * (clipH / h), sx, sy, w, clipH);
+      };
+      const racersBySeg = new Map();
+      for (const k of g.racers) if (k !== me) {
+        const seg = wuSeg(k.z);
+        racersBySeg.set(seg, [...(racersBySeg.get(seg) || []), k]);
+      }
+      for (let n = drawn.length - 1; n >= 1; n--) {
+        const seg = drawn[n];
+        for (const s of seg.sprites) sprite(WU_ART[s.art], WU_SIZE[s.art], seg, s.x);
+        for (const b of seg.boxes) if (!b.gone) sprite(WU_ART.box, WU_SIZE.box, seg, b.x, 120 + Math.sin(g.time * 4) * 40);
+        for (const s of g.slicks) if (wuSeg(s.z) === seg) sprite(WU_ART.soy, WU_SIZE.soy, seg, s.x);
+        for (const s of g.shots) if (wuSeg(s.z) === seg) sprite(WU_ART.chili, WU_SIZE.chili, seg, s.x, 150);
+        for (const k of racersBySeg.get(seg) || []) {
+          const driver = k.driverArt;
+          if (k.driver) { // A friend in their own kart: their head pokes out of the bowl.
+            if (k.driver.complete && k.driver.naturalWidth) {
+              const p = seg.view.p1, w = 360 * p.scale * MINI_W / 2;
+              c.drawImage(k.driver, 0, 0, 44, 34, p.sx + p.sw * k.x - w / 2, p.sy - w * 1.15, w, w * 34 / 44);
+            }
+          } else if (driver) sprite(driver, 380, seg, k.x, 260);
+          sprite(WU_ART.kart, WU_SIZE.kart, seg, k.x + (k.spin > 0 ? Math.sin(g.time * 30) * 0.05 : 0));
+        }
+      }
+      // The player's own kart, always near the bottom of the screen.
+      const wob = me.spin > 0 ? Math.sin(g.time * 30) * 8 : 0;
+      const bounce = me.speed > 100 ? Math.round(Math.sin(g.time * 22)) : 0;
+      const kx = MINI_W / 2 - 60 + wob, ky = MINI_H - 92 + bounce;
+      if (g.driver.complete) c.drawImage(g.driver, 0, 0, 44, 36, kx + 25, ky - 46, 70, 57);
+      c.drawImage(WU_ART.kart, kx, ky, 120, 78);
+      if (me.boost > 0) {
+        c.fillStyle = '#9be35a';
+        for (let i = 0; i < 4; i++) c.fillRect(kx + 30 + i * 18, ky + 76 + Math.random() * 6, 6, 6 + Math.random() * 8);
+      }
+      // Item slot, messages and the countdown.
+      c.fillStyle = '#231d33cc'; c.fillRect(MINI_W - 58, 8, 50, 50);
+      c.strokeStyle = '#ffc857'; c.lineWidth = 2; c.strokeRect(MINI_W - 58, 8, 50, 50);
+      if (me.item) c.drawImage(WU_ART[me.item === 'soy' ? 'soybottle' : me.item], MINI_W - 51, 15, 36, 36);
+      c.textAlign = 'center';
+      if (g.msg) {
+        c.globalAlpha = Math.min(1, g.msg.time * 2);
+        c.font = 'bold 20px "Courier New", monospace'; c.lineWidth = 4; c.strokeStyle = '#231d33';
+        c.strokeText(g.msg.text, MINI_W / 2, 120); c.fillStyle = '#ffc857'; c.fillText(g.msg.text, MINI_W / 2, 120);
+        c.globalAlpha = 1;
       }
       c.textAlign = 'left';
     },
@@ -1368,7 +1805,196 @@ const Game = (() => {
     { key: 'pong', about: 'pongAbout', tiredOk: true, art: 'sprites/pizza.png', start: () => startMini('pong', PIZZA_PONG) },
     { key: 'parkour', about: 'parkourAbout', tiredOk: true, art: 'sprites/icons/walker.png', start: () => startMini('parkour', GARDEN_PARKOUR) },
     { key: 'catch', about: 'catchAbout', tiredOk: true, art: 'sprites/icons/bowl.png', start: () => startMini('catch', RICE_CATCH) },
+    { key: 'wipeuff', about: 'wipeuffAbout', tiredOk: true, art: 'sprites/wipeuff/kart.png', start: () => startMini('wipeuff', WIPE_UFF) },
   ];
+
+  // ----- friendly duels -----
+  // Two friends play live: the challenge goes through the server, then the two devices talk directly
+  // (a WebRTC data channel). The challenger hosts: Pizza Pong runs on their device and the friend's copy follows it.
+  const DUEL_GAMES = {
+    pong: { key: 'pong', art: 'sprites/pizza.png', about: 'duelPongAbout', game: () => PIZZA_PONG },
+    rhythm: { key: 'rhythm', art: 'sprites/icons/bowl.png', about: 'duelRhythmAbout', game: () => RICE_RHYTHM },
+    race: { key: 'wipeuff', art: 'sprites/wipeuff/kart.png', about: 'duelRaceAbout', game: () => WIPE_UFF },
+  };
+  const DUEL_WAIT_MS = 60000;
+  const DUEL_PRIZE = { win: [15, 30, 100], draw: [10, 20, 50], lose: [5, 10, 25] };
+  let duel = null;
+  // A small seeded random generator, so both devices drop the same rice in Rice Rhythm.
+  const seeded = (seed) => () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let x = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+  function newPeer() {
+    return new RTCPeerConnection({ iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }] });
+  }
+  // Waits until the connection knows all the ways it can be reached, so one message carries everything.
+  function gathered(pc) {
+    return new Promise((done) => {
+      if (pc.iceGatheringState === 'complete') return done();
+      const timer = setTimeout(done, 4000);
+      pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') { clearTimeout(timer); done(); } });
+    });
+  }
+  function closeDuel() {
+    if (!duel) return;
+    clearInterval(duel.poll); clearTimeout(duel.expire);
+    try { duel.chan?.close(); duel.pc?.close(); } catch { /* already closed */ }
+    if (duel.id && duel.host && !duel.started) Cloud.deleteDuel(duel.id).catch(() => {});
+    duel = null;
+    $('duelWait').classList.remove('on');
+  }
+  function duelSend(msg) {
+    if (duel?.chan?.readyState === 'open') duel.chan.send(JSON.stringify(msg));
+  }
+  function wireChannel(chan) {
+    duel.chan = chan;
+    chan.onopen = () => {
+      if (!duel.host) return;
+      duel.seed = Math.floor(Math.random() * 2 ** 31);
+      duelSend({ t: 'start', seed: duel.seed, skin: skinNow().dir, name: Cloud.user()?.name });
+      Cloud.deleteDuel(duel.id).catch(() => {});
+      startDuelGame();
+    };
+    chan.onmessage = (e) => {
+      let msg;
+      try { msg = JSON.parse(e.data); } catch { return; }
+      if (msg.t === 'start') { duel.seed = msg.seed; duel.rivalSkin = msg.skin; return startDuelGame(); }
+      if (msg.t === 'hello') {
+        duel.rivalSkin = msg.skin;
+        if (mini?.duel) mini.duel.rivalSkin = msg.skin;
+        if (mini?.rival) mini.rival.driver = art(`${msg.skin}/idle_sheet.png`);
+        return;
+      }
+      if (msg.t === 'quit') return finishDuel('win', t('duelQuit', { name: duel.friendName }));
+      if (mini?.duel && mini.net) mini.net(mini, msg);
+    };
+    chan.onclose = () => { if (duel?.started && mini?.duel) finishDuel('gone', t('duelGone')); };
+  }
+  function startDuelGame() {
+    const d = duel;
+    d.started = true;
+    clearInterval(d.poll); clearTimeout(d.expire);
+    $('duelWait').classList.remove('on'); $('duelAsk').classList.remove('on');
+    if (!d.host) duelSend({ t: 'hello', skin: skinNow().dir });
+    const info = DUEL_GAMES[d.game];
+    startMini(info.key, info.game(), {
+      duel: { host: d.host, friendName: d.friendName, send: duelSend, rand: seeded(d.seed || 1), rivalSkin: d.rivalSkin },
+    });
+  }
+  // Ends a duel for this player: 'win', 'lose', 'draw', or 'gone' when the connection dropped.
+  function finishDuel(result, message) {
+    if (!mini?.duel) return;
+    stopMini();
+    closeDuel();
+    const parts = [];
+    if (result !== 'gone') {
+      const [joy, xp, poken] = DUEL_PRIZE[result];
+      S.joy = clamp(S.joy + joy);
+      S.poken = (S.poken || 0) + poken;
+      if (result === 'win') S.duelWins = (S.duelWins || 0) + 1;
+      if (result === 'lose') S.duelLosses = (S.duelLosses || 0) + 1;
+      parts.push(t('plusJoy', { n: joy }), t('plusXp', { n: addXp(xp) }), `+${poken} Poken`);
+    }
+    save(); sync(); show('home');
+    play($('pet'), result === 'lose' || result === 'gone' ? 'sad' : 'happy', restingAnim());
+    toast(`${message} ${parts.join(' · ')}`);
+  }
+  function openChallenge(friendId, friendName) {
+    const list = $('duelGames');
+    list.replaceChildren();
+    for (const [game, info] of Object.entries(DUEL_GAMES)) {
+      const row = document.createElement('div');
+      row.className = 'bossRow';
+      const img = document.createElement('img');
+      img.src = info.art; img.alt = '';
+      const text = document.createElement('div');
+      const b = document.createElement('b'); b.textContent = t(info.key);
+      const span = document.createElement('span'); span.className = 'dim'; span.textContent = t(info.about);
+      text.append(b, span);
+      const go = document.createElement('button');
+      go.className = 'main'; go.textContent = t('duelGo');
+      go.onclick = () => challenge(friendId, friendName, game);
+      row.append(img, text, go);
+      list.append(row);
+    }
+    $('duelPickText').textContent = t('duelPickText', { name: friendName });
+    $('duelPick').classList.add('on');
+  }
+  async function challenge(friendId, friendName, game) {
+    $('duelPick').classList.remove('on');
+    if (duel) closeDuel();
+    if (!window.RTCPeerConnection) return toast(t('duelUnsupported'));
+    duel = { host: true, friendId, friendName, game };
+    const d = duel;
+    $('duelWaitText').textContent = t('duelWaiting', { name: friendName, game: t(DUEL_GAMES[game].key) });
+    $('duelWait').classList.add('on');
+    try {
+      d.pc = newPeer();
+      wireChannel(d.pc.createDataChannel('duel'));
+      await d.pc.setLocalDescription(await d.pc.createOffer());
+      await gathered(d.pc);
+      if (duel !== d) return;
+      d.id = await Cloud.createDuel(friendId, game, JSON.stringify(d.pc.localDescription));
+      if (duel !== d) { Cloud.deleteDuel(d.id).catch(() => {}); return; }
+      d.expire = setTimeout(() => { if (duel === d && !d.started) { closeDuel(); toast(t('duelNoAnswer', { name: friendName })); } }, DUEL_WAIT_MS);
+      d.poll = setInterval(async () => {
+        if (duel !== d || d.answered) return;
+        const doc = await Cloud.getDuel(d.id).catch(() => undefined);
+        if (doc === null && duel === d && !d.started) { closeDuel(); toast(t('duelDeclined', { name: friendName })); return; }
+        if (doc?.answer && !d.answered) {
+          d.answered = true;
+          await d.pc.setRemoteDescription(JSON.parse(doc.answer)).catch(() => { closeDuel(); toast(t('duelFailed')); });
+        }
+      }, 1500);
+    } catch {
+      closeDuel();
+      toast(t('duelFailed'));
+    }
+  }
+  // Challenges sent to this player pop up on the home screen and menus, never in the middle of a game.
+  let askingDuel = null;
+  async function checkDuels(force) {
+    if (!Cloud.user() || duel || mini || askingDuel || (document.hidden && !force) || $('death').classList.contains('on')) return;
+    try {
+      const fresh = (await Cloud.incomingDuels()).filter((x) => Cloud.now() - x.at < DUEL_WAIT_MS && DUEL_GAMES[x.game]);
+      if (!fresh.length || duel || mini || askingDuel) return;
+      askingDuel = fresh.sort((a, b) => b.at - a.at)[0];
+      $('duelAskText').textContent = t('duelAskText', { name: askingDuel.fromName || askingDuel.from, game: t(DUEL_GAMES[askingDuel.game].key) });
+      $('duelAsk').classList.add('on');
+    } catch { /* tried again soon */ }
+  }
+  async function answerDuel(accept) {
+    const ask = askingDuel;
+    $('duelAsk').classList.remove('on');
+    if (!ask) return;
+    if (!accept) { await Cloud.deleteDuel(ask.id).catch(() => {}); askingDuel = null; return; }
+    if (!window.RTCPeerConnection) { askingDuel = null; return toast(t('duelUnsupported')); }
+    duel = { host: false, id: ask.id, friendId: ask.from, friendName: ask.fromName || ask.from, game: ask.game };
+    const d = duel;
+    $('duelWaitText').textContent = t('duelConnecting', { name: d.friendName });
+    $('duelWait').classList.add('on');
+    try {
+      d.pc = newPeer();
+      d.pc.ondatachannel = (e) => wireChannel(e.channel);
+      await d.pc.setRemoteDescription(JSON.parse(ask.offer));
+      await d.pc.setLocalDescription(await d.pc.createAnswer());
+      await gathered(d.pc);
+      await Cloud.answerDuel(ask.id, JSON.stringify(d.pc.localDescription));
+      d.expire = setTimeout(() => { if (duel === d && !d.started) { closeDuel(); toast(t('duelFailed')); } }, 20000);
+    } catch {
+      closeDuel();
+      toast(t('duelFailed'));
+    }
+    askingDuel = null;
+  }
+  $('btnDuelAccept').onclick = () => answerDuel(true);
+  $('btnDuelDecline').onclick = () => answerDuel(false);
+  $('btnDuelCancel').onclick = () => { closeDuel(); };
+  $('btnDuelPickClose').onclick = () => $('duelPick').classList.remove('on');
+
+
 
   // ----- boss -----
   let fight = null;
@@ -1529,7 +2155,7 @@ const Game = (() => {
     food: Math.round(S.food), energy: Math.round(S.energy), joy: Math.round(S.joy), seen: Cloud.now(),
     str: S.str, shields: S.shields, rhythmBest: S.rhythmBest || 0, deaths: S.life || 0,
     items: Object.values(S.items).reduce((sum, n) => sum + (n || 0), 0), createdAt: S.createdAt,
-    noGifts: giftMode() === 'off',
+    noGifts: giftMode() === 'off', duelWins: S.duelWins || 0,
   });
   let friends = null; // { list, hearts, fans } once loaded
   const ignored = () => { try { return JSON.parse(localStorage.getItem(IGNORED_KEY)) || []; } catch { return []; } };
@@ -1886,6 +2512,7 @@ const Game = (() => {
         ['icons/diamond', S.items.diamond || 0, t('itemDiamond')],
         ['icons/poken', (S.poken || 0).toLocaleString(I18n.current()), 'Poken'],
         ['icons/cd', (S.cds || []).length, t('profCds')],
+        ['icons/trophy', `${S.duelWins || 0} - ${S.duelLosses || 0}`, t('profDuelsMine')],
         ['icons/heart', S.life || 0, t('profDeaths')],
         ['icons/friends', u ? '…' : '-', t('friends')],
       ],
@@ -1920,6 +2547,10 @@ const Game = (() => {
     giftIc.className = 'ic'; giftIc.src = 'sprites/icons/gift.png'; giftIc.alt = '';
     gift.append(giftIc, t('giftBtn'));
     gift.onclick = () => openGift(id);
+    const battle = document.createElement('button');
+    battle.className = 'boss';
+    battle.textContent = `⚔ ${t('challenge')}`;
+    battle.onclick = () => openChallenge(id, st.name || id);
     fillProfile({
       name: st.name || id,
       since: st.createdAt ? t('profJoined', { d: fmtDate(st.createdAt) }) : '',
@@ -1934,8 +2565,9 @@ const Game = (() => {
         ['icons/rice', shown(st.rhythmBest), t('profRhythm')],
         ['icons/backpack', shown(st.items), t('profItems')],
         ['icons/heart', shown(st.deaths), t('profDeaths')],
+        ['icons/trophy', shown(st.duelWins), t('profDuels')],
       ],
-      actions: [heart, gift],
+      actions: [heart, gift, battle],
     });
     show('profile');
   }
@@ -2249,7 +2881,10 @@ const Game = (() => {
   $('btnSettingsBack').onclick = () => show(settingsReturn);
   $('btnTrain').onclick = () => show('trainMenu');
   document.querySelectorAll('[data-home]').forEach((b) => { b.onclick = () => show('home'); });
-  $('btnMiniQuit').onclick = () => { stopMini(); show('trainMenu'); };
+  $('btnMiniQuit').onclick = () => {
+    if (mini?.duel) { duelSend({ t: 'quit' }); finishDuel('gone', t('duelYouQuit')); return; }
+    stopMini(); show('trainMenu');
+  };
   const KEY_DIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right' };
   const KEY_NAMES = { arrowup: 'up', arrowdown: 'down', arrowleft: 'left', arrowright: 'right', w: 'up', s: 'down', a: 'left', d: 'right' };
   const keyDir = (e) => KEY_DIRS[e.code] || KEY_NAMES[String(e.key).toLowerCase()];
@@ -2331,10 +2966,13 @@ const Game = (() => {
   window.addEventListener('online', sync);
   setInterval(homeTimers, 1000);
   setInterval(() => { if (!document.hidden) claimGifts(); }, 60000);
+  setInterval(checkDuels, 5000);
   setInterval(() => { if ($('s-home').classList.contains('on')) { render(); } }, 5000);
 
   I18n.apply();
   if (Cloud.user() || localStorage.getItem('sbuffogotchi.guest')) enterGame(); else show('login');
 
+  // For tests: find challenges even in a background tab, and send one without the menus.
+  window.__duels = { check: () => checkDuels(true), challenge: (id, game) => challenge(id, id, game), now: () => duel };
   return { state: () => S, set: (patch) => { Object.assign(S, patch); save(); render(); }, checkIn, merge, xpNeeded, show, spawnGolden, mini: () => mini, reminders };
 })();
