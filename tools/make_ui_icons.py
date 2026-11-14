@@ -228,6 +228,54 @@ def gift():
     return outlined(im)
 
 
+def poken():
+    """A gold coin stamped with a little poke bowl: the Poken currency."""
+    im, d = canvas(16, 16)
+    blob(d, 8, 8, 7, 7, GOLD_DARK)
+    blob(d, 8, 8, 6, 6, GOLD)
+    d.polygon([(4, 8), (12, 8), (10, 11), (6, 11)], fill=GOLD_DARK)
+    d.rectangle([5, 6, 11, 7], fill=GOLD_LIGHT)
+    d.point([(5, 4), (4, 5)], fill=GOLD_LIGHT)
+    return outlined(im)
+
+
+def cd():
+    """A shiny compact disc."""
+    im, d = canvas(16, 16)
+    blob(d, 8, 8, 7, 7, (196, 204, 220, 255))
+    d.pieslice([1, 1, 15, 15], 200, 250, fill=(170, 230, 255, 255))
+    d.pieslice([1, 1, 15, 15], 20, 70, fill=(255, 190, 230, 255))
+    blob(d, 8, 8, 2, 2, (120, 120, 140, 255))
+    d.point([(8, 8)], fill=(0, 0, 0, 0))
+    return outlined(im)
+
+
+def shop():
+    """A market stall with a striped awning."""
+    im, d = canvas(16, 16)
+    d.rectangle([2, 7, 13, 14], fill=(176, 120, 72, 255))
+    d.rectangle([5, 9, 10, 14], fill=(120, 78, 46, 255))
+    for i, x in enumerate(range(1, 15, 3)):
+        d.rectangle([x, 2, x + 2, 6], fill=RED if i % 2 == 0 else (250, 246, 232, 255))
+    return outlined(im)
+
+
+def cd_player():
+    """The boombox with a CD tray that sits in her room."""
+    im, d = canvas(26, 18)
+    d.line([7, 3, 18, 3], fill=(90, 90, 110, 255))
+    d.line([7, 3, 7, 5], fill=(90, 90, 110, 255)); d.line([18, 3, 18, 5], fill=(90, 90, 110, 255))
+    d.rectangle([1, 5, 24, 16], fill=(214, 70, 92, 255))
+    d.rectangle([1, 5, 24, 6], fill=(240, 120, 136, 255))
+    for cx in (6, 19):
+        blob(d, cx, 11, 4, 4, (52, 40, 64, 255))
+        blob(d, cx, 11, 2, 2, (110, 96, 130, 255))
+    blob(d, 12, 11, 2, 2, (196, 204, 220, 255))
+    d.point([(12, 11)], fill=(52, 40, 64, 255))
+    d.rectangle([11, 7, 13, 7], fill=(255, 220, 120, 255))
+    return outlined(im)
+
+
 def diamond_bowl():
     im, d = canvas(16, 16)
     ice, sky, deep, glint = (214, 244, 255, 255), (120, 210, 245, 255), (60, 140, 215, 255), (255, 255, 255, 255)
@@ -262,7 +310,9 @@ if __name__ == '__main__':
         'heart': heart, 'dumbbell': dumbbell, 'trophy': trophy, 'shield': shield, 'rice': rice_grain,
         'salmon': salmon_piece, 'avocado': avocado, 'shrimp': shrimp, 'edamame': edamame,
         'diamond': diamond_bowl, 'popsicle': popsicle, 'phone': phone, 'monster': energy_can, 'gear': gear, 'backpack': backpack, 'friends': friends, 'admin': admin, 'gift': gift,
+        'poken': poken, 'cd': cd, 'shop': shop,
     }.items():
         draw().save(icons / f'{name}.png')
     golden_bowl().save(OUT / 'golden_bowl.png')
+    cd_player().save(OUT / 'cd_player.png')
     pizza().save(OUT / 'pizza.png')

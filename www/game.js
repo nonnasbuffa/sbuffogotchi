@@ -49,6 +49,8 @@ const Game = (() => {
     if (r.items) parts.push(itemsText(r.items));
     return parts.join(', ');
   };
+  // What the shop pays in Poken for each item. CD prices live in cds.js.
+  const SELL_PRICES = { popsicle: 150, pizza: 400, pokebowl: 750, phone: 100, monster: 300, diamond: 5000 };
   const GOLDEN_EVERY_MS = 10 * 60000;
   const GOLDEN_FADE_IN_MS = 2500;
   const GOLDEN_FADE_OUT_AT_MS = 10000;
@@ -77,7 +79,7 @@ const Game = (() => {
     care: {}, tickAt: Date.now(), updatedAt: 0,
     rewardDay: 0, lastReward: -1, nextGolden: 0,
     items: { pokebowl: 1, pizza: 1, popsicle: 1, phone: 1, monster: 1, diamond: 0 },
-    life: 0,
+    life: 0, poken: 0, cds: [],
   });
 
   let S = fresh();
@@ -115,6 +117,8 @@ const Game = (() => {
       rewardDay: Math.max(local.rewardDay ?? 0, remote.rewardDay ?? 0),
       lastReward: Math.max(local.lastReward ?? -1, remote.lastReward ?? -1),
       mortal: local.mortal || remote.mortal,
+      // A CD bought on any device stays owned everywhere.
+      cds: [...new Set([...(local.cds || []), ...(remote.cds || [])])],
       createdAt: Math.min(local.createdAt || Infinity, remote.createdAt || Infinity) === Infinity ? undefined : Math.min(local.createdAt || Infinity, remote.createdAt || Infinity) };
   }
 
@@ -126,7 +130,8 @@ const Game = (() => {
   function tick() {
     const now = Date.now();
     const hours = Math.max(0, now - S.tickAt) / 3600000;
-    for (const k in DECAY_PER_HOUR) S[k] = clamp(S[k] - DECAY_PER_HOUR[k] * hours);
+    // While a CD plays she is happy listening, so her joy doesn't drop.
+    for (const k in DECAY_PER_HOUR) if (!(k === 'joy' && cdNow)) S[k] = clamp(S[k] - DECAY_PER_HOUR[k] * hours);
     if (cheat('god')) S.food = S.energy = S.joy = 100;
     S.tickAt = now;
   }
@@ -183,6 +188,7 @@ const Game = (() => {
     if (name === 'bosses') renderBossList();
     if (name === 'trainMenu') renderGameMenu();
     if (name === 'bag') renderBag();
+    if (name === 'shop') renderShop();
     if (name === 'settings') renderSettings();
     if (name === 'friends') loadFriends();
     if (name !== 'home') removeGolden();
@@ -348,6 +354,140 @@ const Game = (() => {
     play($('pet'), 'happy', restingAnim());
     toast(`${t(fed ? 'plusFood' : 'plusEnergy', { n: item.amount })}${fed ? ` · ${t('plusJoy', { n: FEED_JOY })}` : ''} · ${t('plusXp', { n: xp })}`);
   }
+
+  // ----- shop -----
+  let shopTab = 'sell';
+  const fmtPoken = (n) => `${(n || 0).toLocaleString(I18n.current())} Poken`;
+  const ownsCd = (id) => (S.cds || []).includes(id);
+  function shopRow(icon, title, about, buttons, cls = '') {
+    const row = document.createElement('div');
+    row.className = `bossRow ${cls}`;
+    const img = document.createElement('img');
+    img.src = icon; img.alt = '';
+    const text = document.createElement('div');
+    const b = document.createElement('b');
+    b.textContent = title;
+    const span = document.createElement('span');
+    span.className = 'dim'; span.textContent = about;
+    text.append(b, span);
+    const acts = document.createElement('div');
+    acts.className = 'shopBtns';
+    acts.append(...buttons);
+    row.append(img, text, acts);
+    return row;
+  }
+  function shopButton(label, onclick, disabled, cls = 'main') {
+    const b = document.createElement('button');
+    b.textContent = label; b.className = cls; b.disabled = disabled; b.onclick = onclick;
+    return b;
+  }
+  function renderShop() {
+    $('pokenBal').textContent = fmtPoken(S.poken);
+    $('tabSell').classList.toggle('picked', shopTab === 'sell');
+    $('tabCds').classList.toggle('picked', shopTab === 'cds');
+    const list = $('shopList');
+    list.replaceChildren();
+    if (shopTab === 'sell') {
+      for (const id of Object.keys(SELL_PRICES)) {
+        const have = S.items[id] || 0;
+        list.append(shopRow(ITEMS[id].icon, `${t(ITEMS[id].key)} x${have}`, t('sellFor', { p: fmtPoken(SELL_PRICES[id]) }), [
+          shopButton(t('sell'), () => sellItem(id, 1), !have),
+          shopButton(t('sellAll'), () => sellItem(id, have), have < 2, ''),
+        ], have ? '' : 'empty'));
+      }
+      return;
+    }
+    if (!CDS.length) {
+      const p = document.createElement('p');
+      p.className = 'center dim'; p.textContent = t('cdsSoon');
+      list.append(p);
+    }
+    for (const cd of CDS) {
+      const owned = ownsCd(cd.id);
+      list.append(shopRow('sprites/icons/cd.png', cd.title, owned ? t('cdOwned') : fmtPoken(cd.price), [
+        owned ? shopButton(t('cdPlay'), () => { playCd(cd.id); show('home'); }, false)
+          : shopButton(t('buy'), () => buyCd(cd.id), (S.poken || 0) < cd.price),
+      ], `cdRow${owned ? ' picked' : ''}`));
+      list.lastChild.querySelector('img').style.filter = `hue-rotate(${cd.hue || 0}deg)`;
+    }
+  }
+  function sellItem(id, n) {
+    if (!(n > 0) || n > (S.items[id] || 0)) return;
+    // Selling the last diamond leaves nothing to bring her back with, so check first.
+    if ((id === 'diamond' || n > 1) && !confirm(t('sellConfirm', { n, item: t(ITEMS[id].key), p: fmtPoken(SELL_PRICES[id] * n) }))) return;
+    S.items[id] -= n;
+    S.poken = (S.poken || 0) + SELL_PRICES[id] * n;
+    save(); renderShop();
+    toast(t('sold', { n, item: t(ITEMS[id].key), p: fmtPoken(SELL_PRICES[id] * n) }));
+  }
+  function buyCd(id) {
+    const cd = CDS.find((c) => c.id === id);
+    if (!cd || ownsCd(id) || (S.poken || 0) < cd.price) return;
+    S.poken -= cd.price;
+    S.cds = [...(S.cds || []), id];
+    save(); sync(); renderShop();
+    toast(t('cdBought', { name: cd.title }));
+  }
+  $('tabSell').onclick = () => { shopTab = 'sell'; renderShop(); };
+  $('tabCds').onclick = () => { shopTab = 'cds'; renderShop(); };
+
+  // ----- CD player -----
+  // One song at a time, on repeat, until stopped. The chiptune music waits while it plays.
+  let cdNow = null;
+  let cdPausedByHiding = false;
+  const cdAudio = new Audio();
+  cdAudio.loop = true;
+  cdAudio.onerror = () => { if (cdNow) { stopCd(); toast(t('cdError')); } };
+  function playCd(id) {
+    const cd = CDS.find((c) => c.id === id);
+    if (!cd || !ownsCd(id)) return;
+    tick();
+    cdNow = id;
+    cdAudio.src = cd.file;
+    cdAudio.play().catch(() => {});
+    Music.hold?.(true);
+    $('cdPlayer').classList.add('playing');
+    renderCd();
+    toast(t('cdNowPlaying', { name: cd.title }));
+  }
+  function stopCd() {
+    tick();
+    cdNow = null;
+    cdAudio.pause();
+    cdAudio.removeAttribute('src');
+    Music.hold?.(false);
+    $('cdPlayer').classList.remove('playing');
+    renderCd();
+  }
+  function renderCd() {
+    const cd = CDS.find((c) => c.id === cdNow);
+    $('cdNow').textContent = cd ? t('cdNowPlaying', { name: cd.title }) : t('cdIdle');
+    $('btnCdStop').hidden = !cd;
+    const list = $('cdList');
+    list.replaceChildren();
+    const owned = CDS.filter((c) => ownsCd(c.id));
+    $('btnCdShop').hidden = owned.length > 0;
+    if (!owned.length) {
+      const p = document.createElement('p');
+      p.className = 'center dim'; p.textContent = t('cdNone');
+      list.append(p);
+    }
+    for (const c of owned) {
+      const b = document.createElement('button');
+      const img = document.createElement('img');
+      img.src = 'sprites/icons/cd.png'; img.alt = ''; img.className = 'ic';
+      img.style.filter = `hue-rotate(${c.hue || 0}deg)`;
+      b.append(img, c.title);
+      if (c.id === cdNow) b.className = 'picked';
+      b.onclick = () => (c.id === cdNow ? stopCd() : playCd(c.id));
+      list.append(b);
+    }
+  }
+  function openCd() { renderCd(); $('cdWin').classList.add('on'); }
+  $('cdPlayer').onclick = openCd;
+  $('btnCdStop').onclick = stopCd;
+  $('btnCdClose').onclick = () => $('cdWin').classList.remove('on');
+  $('btnCdShop').onclick = () => { $('cdWin').classList.remove('on'); shopTab = 'cds'; show('shop'); };
 
   // ----- death -----
   const isDead = () => S.food <= 0 || S.energy <= 0;
@@ -1566,6 +1706,7 @@ const Game = (() => {
     ['cheatShield', () => { S.shields += 1; }],
     ['cheatBoss', () => { S.level = Math.max(S.level, nextBossLevel()); }],
     ['cheatDaily', () => { S.lastReward = dayNumber(Cloud.now()) - 1; }],
+    ['cheatPoken', () => { S.poken = (S.poken || 0) + 10000; }],
     ['cheatGolden', () => { closeAdmin(); show('home'); spawnGolden(); return true; }],
   ];
   function adminButton(label, onclick, cls) {
@@ -1709,6 +1850,8 @@ const Game = (() => {
         ['icons/rice', S.rhythmBest || 0, t('profRhythm')],
         ['icons/backpack', totalItems(), t('profItems')],
         ['icons/diamond', S.items.diamond || 0, t('itemDiamond')],
+        ['icons/poken', (S.poken || 0).toLocaleString(I18n.current()), 'Poken'],
+        ['icons/cd', (S.cds || []).length, t('profCds')],
         ['icons/heart', S.life || 0, t('profDeaths')],
         ['icons/friends', u ? '…' : '-', t('friends')],
       ],
@@ -2057,6 +2200,7 @@ const Game = (() => {
   $('btnFeed').onclick = () => openBag('food');
   $('btnRest').onclick = () => openBag('energy');
   $('btnBag').onclick = () => openBag(null);
+  $('btnShop').onclick = () => { shopTab = 'sell'; show('shop'); };
   $('btnFriends').onclick = () => show('friends');
   $('btnAdmin').onclick = openAdmin;
   $('btnAddFriend').onclick = () => addFriend($('friendName').value);
@@ -2145,6 +2289,9 @@ const Game = (() => {
   $('btnGiftClose').onclick = closeGift;
   $('btnGiftSend').onclick = sendGift;
   document.addEventListener('visibilitychange', () => {
+    // The CD stops while the app is in the background and carries on when the player is back.
+    if (document.hidden && cdNow) { tick(); cdAudio.pause(); cdPausedByHiding = true; }
+    else if (!document.hidden && cdPausedByHiding) { cdPausedByHiding = false; if (cdNow) { tick(); cdAudio.play().catch(() => {}); } }
     if (document.hidden) { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); sync(); leavingApp(); } else backInApp();
   });
   window.addEventListener('online', sync);

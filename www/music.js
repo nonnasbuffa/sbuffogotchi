@@ -59,7 +59,7 @@ const Music = (() => {
       if (!Ctx) return;
       ctx = new Ctx();
       master = ctx.createGain();
-      master.gain.value = enabled ? 0.5 : 0;
+      master.gain.value = enabled && !held ? 0.5 : 0;
       master.connect(ctx.destination);
       timer = setInterval(schedule, 60);
     }
@@ -71,10 +71,16 @@ const Music = (() => {
     step = 0;
     nextAt = 0;
   }
+  // A CD playing in her room silences the background music until it stops.
+  let held = false;
+  function hold(on) {
+    held = on;
+    if (master) master.gain.value = enabled && !held ? 0.5 : 0;
+  }
   function setEnabled(on) {
     enabled = on;
     try { localStorage.setItem(KEY, on ? 'on' : 'off'); } catch { /* lasts until the app closes */ }
-    if (master) master.gain.value = on ? 0.5 : 0;
+    if (master) master.gain.value = on && !held ? 0.5 : 0;
     if (on) unlock();
   }
   document.addEventListener('pointerdown', unlock, true);
@@ -84,5 +90,5 @@ const Music = (() => {
     if (document.hidden) ctx.suspend(); else ctx.resume();
   });
 
-  return { play, setEnabled, enabled: () => enabled, status: () => ({ track, step, state: ctx?.state ?? 'locked', timer: !!timer }) };
+  return { play, hold, setEnabled, enabled: () => enabled, status: () => ({ track, step, state: ctx?.state ?? 'locked', timer: !!timer }) };
 })();
