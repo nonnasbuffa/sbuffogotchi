@@ -105,6 +105,7 @@ html,body,button,canvas,#app *{-webkit-user-select:none;user-select:none;-webkit
 #achList{gap:5px;flex:1;min-height:0;overflow-y:auto}#achList .bossRow{grid-template-columns:44px 1fr 92px;gap:8px;padding:4px 8px}#achList .bossRow img{width:44px;height:44px}
 .achRow.locked img{filter:grayscale(1) opacity(.45)}.achRow.ready{border-color:var(--gold)}.achRow.claimed{opacity:.75}.achRow.special{border-color:#78d2f5}.achPrize{display:block;color:var(--gold);font-size:13px}
 .sellPick{display:grid;grid-template-columns:48px 1fr 48px;gap:10px;align-items:center}.sellPick input{width:100%;accent-color:var(--gold)}.sellPick button{min-height:44px;padding:0;font-size:22px}
+.roomCol{display:flex;flex-direction:column;gap:4px;min-height:0}.petName{min-height:0;padding:2px 0;color:var(--gold);font-weight:bold;font-size:18px;text-align:center;align-self:center}.petName small{color:var(--dim)}
 #cdList button{display:flex;align-items:center;justify-content:center;gap:8px}
 .toast{z-index:30;position:fixed;left:16px;right:16px;bottom:24px;max-width:448px;margin:auto;background:#000c;border:2px solid var(--gold);padding:10px;text-align:center;font-weight:bold;pointer-events:none;opacity:0;transition:opacity .2s}.toast.on{opacity:1}
 .side{display:contents}
@@ -120,7 +121,7 @@ button{min-height:58px;font-size:19px}
 #s-home{width:100%;flex:none}
 #s-home.on{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);column-gap:26px;row-gap:12px}
 #s-home .top{grid-column:1/-1;font-size:clamp(20px,2.4vh,30px)}#s-home .top .ic{width:clamp(28px,3.2vh,40px);height:clamp(28px,3.2vh,40px)}#s-home .xp{grid-column:1/-1;height:14px}
-#s-home .stage{grid-column:1;height:auto;aspect-ratio:4/3;min-height:0}
+#s-home .roomCol{grid-column:1}#s-home .stage{height:auto;aspect-ratio:4/3;min-height:0}#s-home .petName{font-size:clamp(20px,2.4vh,30px);min-height:0}
 #s-home .side{grid-column:2;display:flex;flex-direction:column;justify-content:space-between;gap:10px;min-width:0}
 .infoCard{display:flex;flex-direction:column;gap:clamp(4px,.8vh,10px);background:var(--panel);border:3px solid var(--line);padding:10px 14px;font-size:clamp(15px,1.7vh,22px)}
 .infoHead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;border-bottom:2px solid var(--line);padding-bottom:6px;margin-bottom:2px}
@@ -170,7 +171,8 @@ button{min-height:58px;font-size:19px}
   <section class="screen" id="s-home">
     <div class="top"><span class="stat"><img class="ic" src="sprites/icons/star.png" alt="" data-i18n-alt="level"><span id="lvl"></span></span><span class="stat streak"><img class="ic" src="sprites/icons/bowl.png" alt="" data-i18n-alt="streak"><span id="streak"></span></span><button class="link" id="btnAccount" style="min-height:0;padding:0"></button><button class="link iconBtn" id="btnAdmin" hidden><img class="ic" src="sprites/icons/admin.png" alt="" data-i18n-alt="adminTitle"></button><button class="link iconBtn" id="btnAch"><img class="ic" src="sprites/icons/trophy.png" alt="" data-i18n-alt="achTitle"><i class="dot" id="achDot" hidden></i></button><button class="link iconBtn" id="btnFriends"><img class="ic" src="sprites/icons/friends.png" alt="" data-i18n-alt="friends"></button><button class="link iconBtn" data-settings><img class="ic" src="sprites/icons/gear.png" alt="" data-i18n-alt="settings"></button></div>
     <div class="xp"><i id="xpFill"></i></div>
-    <div class="stage"><div class="say" id="say"></div><div class="sprite" id="pet"></div><button class="link" id="cdPlayer"><img src="sprites/cd_player.png" alt="" data-i18n-alt="cdPlayer"></button></div>
+    <div class="roomCol"><button class="link petName" id="btnPetName"><span id="petNameText"></span> <small>✎</small></button>
+    <div class="stage"><div class="say" id="say"></div><div class="sprite" id="pet"></div><button class="link" id="cdPlayer"><img src="sprites/cd_player.png" alt="" data-i18n-alt="cdPlayer"></button></div></div>
     <div class="side">
     <div class="infoCard">
       <div class="infoHead"><b id="infoLevel"></b><span id="infoXp"></span></div>
@@ -187,7 +189,7 @@ button{min-height:58px;font-size:19px}
     <div class="row2"><button id="btnFeed"><img class="ic" src="sprites/icons/apple.png" alt=""><span data-i18n="feed"></span></button><button id="btnRest"><img class="ic" src="sprites/icons/bolt.png" alt=""><span data-i18n="energy"></span></button></div>
     <div class="row2"><button class="main" id="btnTrain"><img class="ic" src="sprites/icons/rice.png" alt=""><span data-i18n="train"></span></button><button class="boss" id="btnBoss"><img class="ic" src="sprites/icons/trophy.png" alt=""><span id="btnBossLabel"></span></button></div>
     <div class="row2"><button id="btnBag"><img class="ic" src="sprites/icons/backpack.png" alt=""><span data-i18n="bag"></span></button><button id="btnShop"><img class="ic" src="sprites/icons/shop.png" alt=""><span data-i18n="shop"></span></button></div>
-    <div class="stats"><span class="stat"><img class="ic" src="sprites/icons/dumbbell.png" alt="" data-i18n-alt="strength"><span id="str"></span></span><span class="stat"><img class="ic" src="sprites/icons/trophy.png" alt="" data-i18n-alt="bossesBeaten"><span id="wins"></span></span><span class="stat"><img class="ic" src="sprites/icons/shield.png" alt="" data-i18n-alt="shields"><span id="shields"></span></span></div>
+    <div class="stats"><span class="stat"><img class="ic" src="sprites/icons/dumbbell.png" alt="" data-i18n-alt="strength"><span id="str"></span></span><span class="stat"><img class="ic" src="sprites/icons/trophy.png" alt="" data-i18n-alt="bossesBeaten"><span id="wins"></span></span><span class="stat"><img class="ic" src="sprites/icons/poken.png" alt="Poken"><span id="pokenStat"></span></span></div>
     </div>
   </section>
 
@@ -333,6 +335,12 @@ button{min-height:58px;font-size:19px}
   <div class="sellPick"><button id="btnSellMinus">−</button><input type="range" id="sellRange" min="1" max="1" value="1"><button id="btnSellPlus">+</button></div>
   <p id="sellCount"></p>
   <div class="row2"><button id="btnSellCancel" data-i18n="cancel"></button><button class="main" id="btnSellGo" data-i18n="sell"></button></div>
+</div></div>
+<div class="modal" id="nameWin"><div class="panel center">
+  <h2 data-i18n="petNameTitle"></h2>
+  <p class="dim" data-i18n="petNameAbout"></p>
+  <input id="petNameInput" maxlength="20" autocomplete="off" spellcheck="false">
+  <div class="row2"><button id="btnNameCancel" data-i18n="cancel"></button><button class="main" id="btnNameSave" data-i18n="petNameSave"></button></div>
 </div></div>
 <div class="modal" id="daily"><div class="panel">
   <h2 data-i18n="dailyTitle"></h2>

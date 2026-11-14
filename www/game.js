@@ -39,11 +39,10 @@ const Game = (() => {
     { icon: 'star', xp: 60 },
     { icon: 'bowl', items: { pokebowl: 1, monster: 1 } },
     { icon: 'dumbbell', str: 2 },
-    { icon: 'shield', shields: 1, xp: 100 },
+    { icon: 'bowl', items: { pokebowl: 2 }, xp: 100 },
   ];
   const dailyLabel = (r) => {
     const parts = [];
-    if (r.shields) parts.push(`+${r.shields} ${t('shields')}`);
     if (r.xp) parts.push(t('plusXp', { n: r.xp }));
     if (r.str) parts.push(t('plusStr', { n: r.str }));
     if (r.items) parts.push(itemsText(r.items));
@@ -84,7 +83,7 @@ const Game = (() => {
   const fresh = () => ({
     level: 1, xp: 0, str: 1, bossWins: 0,
     food: 80, energy: 80, joy: 80,
-    streak: 0, lastDay: null, shields: 0,
+    streak: 0, lastDay: null,
     care: {}, tickAt: Date.now(), updatedAt: 0,
     rewardDay: 0, lastReward: -1, nextGolden: 0,
     items: { pokebowl: 1, pizza: 1, popsicle: 1, phone: 1, monster: 1, diamond: 0 },
@@ -121,7 +120,7 @@ const Game = (() => {
       ? (remote.updatedAt > local.updatedAt ? remote : local)
       : (progress(remote) > progress(local) ? remote : local);
     const better = remote.lastDay > local.lastDay || !local.lastDay ? remote : local;
-    return { ...fresh(), ...winner, streak: better.streak, lastDay: better.lastDay, shields: better.shields,
+    return { ...fresh(), ...winner, streak: better.streak, lastDay: better.lastDay,
       // A reward claimed on any device stays claimed everywhere.
       rewardDay: Math.max(local.rewardDay ?? 0, remote.rewardDay ?? 0),
       lastReward: Math.max(local.lastReward ?? -1, remote.lastReward ?? -1),
@@ -151,10 +150,7 @@ const Game = (() => {
     let msg;
     if (S.lastDay === null || S.lastDay > today) { S.streak = 1; msg = t('day1'); }
     else if (today - S.lastDay === 1) { S.streak += 1; msg = t('streakN', { n: S.streak }); }
-    else if (S.shields >= today - S.lastDay - 1) {
-      S.shields -= today - S.lastDay - 1; S.streak += 1; msg = t('shieldSaved', { n: S.streak });
-    } else { S.streak = Math.max(1, Math.floor(S.streak / 2)); msg = t('streakLost', { n: S.streak }); }
-    if (S.streak % 7 === 0) { S.shields += 1; msg += ` ${t('plusShield')}`; }
+    else { S.streak = Math.max(1, Math.floor(S.streak / 2)); msg = t('streakLost', { n: S.streak }); }
     S.lastDay = today;
     return msg;
   }
@@ -212,10 +208,11 @@ const Game = (() => {
   function render() {
     tick();
     $('lvl').textContent = S.level;
+    $('petNameText').textContent = petName();
     $('streak').textContent = S.streak;
     $('xpFill').style.width = `${(S.xp / xpNeeded()) * 100}%`;
     for (const k of ['food', 'energy', 'joy']) $(`b-${k}`).style.width = `${S[k]}%`;
-    $('str').textContent = S.str; $('wins').textContent = S.bossWins; $('shields').textContent = S.shields;
+    $('str').textContent = S.str; $('wins').textContent = S.bossWins; $('pokenStat').textContent = (S.poken || 0).toLocaleString(I18n.current());
     const u = Cloud.user();
     $('btnAccount').textContent = u ? u.name : t('guestName');
     $('btnAdmin').hidden = !cheat('unlocked');
@@ -230,7 +227,7 @@ const Game = (() => {
   function renderInfo(need) {
     $('infoLevel').textContent = t('levelN', { n: S.level });
     $('infoXp').textContent = t('xpOf', { a: S.xp, b: xpNeeded() });
-    $('infoStreak').textContent = t('infoStreak', { n: S.streak, s: S.shields });
+    $('infoStreak').textContent = t('infoStreak', { n: S.streak });
     const boss = bossFor(S.bossWins);
     $('infoBossIcon').src = `sprites/boss_${boss.art}.png`;
     $('infoBoss').textContent = S.level >= need ? t('infoBossReady', { name: boss.name }) : t('infoBossAt', { name: boss.name, n: need });
@@ -557,10 +554,31 @@ const Game = (() => {
   $('btnCdClose').onclick = () => $('cdWin').classList.remove('on');
   $('btnCdShop').onclick = () => { $('cdWin').classList.remove('on'); shopTab = 'cds'; show('shop'); };
 
+  // ----- her name -----
+  const PET_NAME_MAX = 20;
+  const petName = () => (S.petName || '').trim() || t('petDefault');
+  function openPetName() {
+    $('petNameInput').value = S.petName || '';
+    $('petNameInput').placeholder = t('petDefault');
+    $('nameWin').classList.add('on');
+    setTimeout(() => $('petNameInput').focus(), 50);
+  }
+  function savePetName() {
+    const name = $('petNameInput').value.replace(/\s+/g, ' ').trim().slice(0, PET_NAME_MAX);
+    S.petName = name;
+    $('nameWin').classList.remove('on');
+    save(); sync(); render();
+    toast(t('petNamed', { name: petName() }));
+  }
+  $('btnPetName').onclick = openPetName;
+  $('btnNameSave').onclick = savePetName;
+  $('btnNameCancel').onclick = () => $('nameWin').classList.remove('on');
+  $('petNameInput').onkeydown = (e) => { if (e.key === 'Enter') savePetName(); };
+
   // ----- achievements -----
   // Each one checks the save for [how far, goal]; finished ones are claimed for Poken.
-  // Beta players: anyone whose Sbuffling (or account) existed before 14 November 2026.
-  const BETA_END = new Date(2026, 10, 14).getTime();
+  // Beta players: anyone whose account (or Sbuffling) was made on 15 November 2026 or earlier.
+  const BETA_END = new Date(2026, 10, 16).getTime(); // The first moment after 15 November 2026.
   const isBeta = () => (S.createdAt && S.createdAt < BETA_END) || (S.lastDay != null && S.lastDay < dayNumber(BETA_END)) ? 1 : 0;
   const ACHIEVEMENTS = [
     { id: 'beta', prize: 5000, special: true, check: () => [isBeta(), 1] },
@@ -758,7 +776,6 @@ const Game = (() => {
     const r = DAILY_REWARDS[S.rewardDay % DAILY_REWARDS.length];
     if (r.items) addItems(r.items);
     if (r.str) S.str += r.str;
-    if (r.shields) S.shields += r.shields;
     if (r.xp) addXp(r.xp);
     S.rewardDay += 1;
     S.lastReward = dayNumber(Cloud.now());
@@ -2332,7 +2349,7 @@ const Game = (() => {
   const publicStats = () => ({
     name: Cloud.user().name, level: S.level, streak: S.streak, bossWins: S.bossWins,
     food: Math.round(S.food), energy: Math.round(S.energy), joy: Math.round(S.joy), seen: Cloud.now(),
-    str: S.str, shields: S.shields, rhythmBest: S.rhythmBest || 0, deaths: S.life || 0,
+    str: S.str, petName: petName(), rhythmBest: S.rhythmBest || 0, deaths: S.life || 0,
     items: Object.values(S.items).reduce((sum, n) => sum + (n || 0), 0), createdAt: S.createdAt,
     noGifts: giftMode() === 'off', duelWins: S.duelWins || 0,
   });
@@ -2544,7 +2561,6 @@ const Game = (() => {
     ['cheatFill', () => { S.food = S.energy = S.joy = 100; S.tickAt = Date.now(); }],
     ['cheatLevel', () => { S.level += 1; S.xp = 0; }],
     ['cheatStr', () => { S.str += 10; }],
-    ['cheatShield', () => { S.shields += 1; }],
     ['cheatBoss', () => { S.level = Math.max(S.level, nextBossLevel()); }],
     ['cheatDaily', () => { S.lastReward = dayNumber(Cloud.now()) - 1; }],
     ['cheatPoken', () => { S.poken = (S.poken || 0) + 10000; }],
@@ -2680,13 +2696,12 @@ const Game = (() => {
     logout.onclick = leaveAccount;
     const me = {
       name: u ? u.name : t('guestName'),
-      since: t(u ? 'profJoined' : 'profPlaying', { d: fmtDate(S.createdAt) }),
+      since: `${petName()} · ${t(u ? 'profJoined' : 'profPlaying', { d: fmtDate(S.createdAt) })}`,
       food: S.food, energy: S.energy, joy: S.joy,
       tiles: [
         ['icons/star', t('levelN', { n: S.level }), t('xpOf', { a: S.xp, b: xpNeeded() })],
         ['icons/trophy', S.bossWins, t('profBosses')],
         ['icons/bowl', S.streak, t('profStreak')],
-        ['icons/shield', S.shields, t('shields')],
         ['icons/dumbbell', S.str, t('strength')],
         ['icons/rice', S.rhythmBest || 0, t('profRhythm')],
         ['icons/backpack', totalItems(), t('profItems')],
@@ -2734,14 +2749,13 @@ const Game = (() => {
     battle.onclick = () => openChallenge(id, st.name || id);
     fillProfile({
       name: st.name || id,
-      since: st.createdAt ? t('profJoined', { d: fmtDate(st.createdAt) }) : '',
+      since: [st.petName, st.createdAt ? t('profJoined', { d: fmtDate(st.createdAt) }) : ''].filter(Boolean).join(' · '),
       seen: seenText(st.seen),
       food: now('food'), energy: now('energy'), joy: now('joy'),
       tiles: [
         ['icons/star', shown(st.level), t('level')],
         ['icons/trophy', shown(st.bossWins), t('profBosses')],
         ['icons/bowl', shown(st.streak), t('profStreak')],
-        ['icons/shield', shown(st.shields), t('shields')],
         ['icons/dumbbell', shown(st.str), t('strength')],
         ['icons/rice', shown(st.rhythmBest), t('profRhythm')],
         ['icons/backpack', shown(st.items), t('profItems')],
