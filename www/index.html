@@ -100,7 +100,7 @@ html,body,button,canvas,#app *{-webkit-user-select:none;user-select:none;-webkit
 .pokenBal{display:flex;align-items:center;justify-content:center;gap:8px;font-size:20px;color:var(--gold);margin:0}
 #shopList{gap:5px;flex:1;min-height:0;overflow-y:auto}#shopList .bossRow{grid-template-columns:48px 1fr 128px;gap:8px;padding:4px 8px}#shopList .bossRow img{width:48px;height:48px}#shopList .bossRow.empty img{opacity:.4}#shopList .cdRow.picked{border-color:var(--green)}
 .shopBtns{display:grid;grid-template-columns:1fr 1fr;gap:4px}.shopBtns button{min-height:38px;padding:4px;font-size:14px}.shopBtns button:only-child{grid-column:1/-1}
-#cdList button{display:flex;align-items:center;justify-content:center;gap:8px}
+#shopList .skinRow img{width:44px;height:54px}#cdList button{display:flex;align-items:center;justify-content:center;gap:8px}
 .toast{z-index:30;position:fixed;left:16px;right:16px;bottom:24px;max-width:448px;margin:auto;background:#000c;border:2px solid var(--gold);padding:10px;text-align:center;font-weight:bold;pointer-events:none;opacity:0;transition:opacity .2s}.toast.on{opacity:1}
 .side{display:contents}
 .top>*{flex-shrink:0}#btnAccount{flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -197,7 +197,7 @@ button{min-height:58px;font-size:19px}
   <section class="screen" id="s-shop">
     <h2 data-i18n="shop"></h2>
     <p class="center pokenBal"><img class="ic" src="sprites/icons/poken.png" alt=""><b id="pokenBal"></b></p>
-    <div class="row2"><button id="tabSell" data-i18n="shopSell"></button><button id="tabCds" data-i18n="shopCds"></button></div>
+    <div class="row"><button id="tabSell" data-i18n="shopSell"></button><button id="tabCds" data-i18n="shopCds"></button><button id="tabSkins" data-i18n="shopSkins"></button></div>
     <div class="menuList" id="shopList"></div>
     <button data-home data-i18n="back"></button>
   </section>

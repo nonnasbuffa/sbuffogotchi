@@ -51,6 +51,13 @@ const Game = (() => {
   };
   // What the shop pays in Poken for each item. CD prices live in cds.js.
   const SELL_PRICES = { popsicle: 150, pizza: 400, pokebowl: 750, phone: 100, monster: 300, diamond: 5000 };
+  // Looks for her, bought in the shop. Each skin folder has the same four sheets as the normal pet.
+  const SKINS = [
+    { id: 'default', key: 'skinDefault', icon: 'sprites/skins/default_icon.png', dir: 'sprites', price: 0 },
+    { id: 'boxer', key: 'skinBoxer', icon: 'sprites/skins/boxer/icon.png', dir: 'sprites/skins/boxer', price: 10000 },
+  ];
+  const skinNow = () => SKINS.find((s) => s.id === S.skin && ownsSkin(s.id)) || SKINS[0];
+  const ownsSkin = (id) => id === 'default' || (S.skins || []).includes(id);
   const GOLDEN_EVERY_MS = 10 * 60000;
   const GOLDEN_FADE_IN_MS = 2500;
   const GOLDEN_FADE_OUT_AT_MS = 10000;
@@ -119,6 +126,7 @@ const Game = (() => {
       mortal: local.mortal || remote.mortal,
       // A CD bought on any device stays owned everywhere.
       cds: [...new Set([...(local.cds || []), ...(remote.cds || [])])],
+      skins: [...new Set([...(local.skins || []), ...(remote.skins || [])])],
       createdAt: Math.min(local.createdAt || Infinity, remote.createdAt || Infinity) === Infinity ? undefined : Math.min(local.createdAt || Infinity, remote.createdAt || Infinity) };
   }
 
@@ -166,7 +174,7 @@ const Game = (() => {
   function play(el, name, thenIdle) {
     clearTimeout(players.get(el));
     const times = ANIMS[name];
-    el.style.backgroundImage = `url(sprites/${name}_sheet.png)`;
+    el.style.backgroundImage = `url(${skinNow().dir}/${name}_sheet.png)`;
     let i = 0;
     const step = () => {
       if (i >= times.length) {
@@ -385,6 +393,7 @@ const Game = (() => {
     $('pokenBal').textContent = fmtPoken(S.poken);
     $('tabSell').classList.toggle('picked', shopTab === 'sell');
     $('tabCds').classList.toggle('picked', shopTab === 'cds');
+    $('tabSkins').classList.toggle('picked', shopTab === 'skins');
     const list = $('shopList');
     list.replaceChildren();
     if (shopTab === 'sell') {
@@ -394,6 +403,16 @@ const Game = (() => {
           shopButton(t('sell'), () => sellItem(id, 1), !have),
           shopButton(t('sellAll'), () => sellItem(id, have), have < 2, ''),
         ], have ? '' : 'empty'));
+      }
+      return;
+    }
+    if (shopTab === 'skins') {
+      for (const skin of SKINS) {
+        const owned = ownsSkin(skin.id), worn = skinNow().id === skin.id;
+        list.append(shopRow(skin.icon, t(skin.key), worn ? t('skinWorn') : owned ? t('cdOwned') : fmtPoken(skin.price), [
+          owned ? shopButton(t(worn ? 'skinWorn' : 'skinWear'), () => wearSkin(skin.id), worn)
+            : shopButton(t('buy'), () => buySkin(skin.id), (S.poken || 0) < skin.price),
+        ], `cdRow skinRow${worn ? ' picked' : ''}`));
       }
       return;
     }
@@ -428,6 +447,21 @@ const Game = (() => {
     save(); sync(); renderShop();
     toast(t('cdBought', { name: cd.title }));
   }
+  function buySkin(id) {
+    const skin = SKINS.find((s) => s.id === id);
+    if (!skin || ownsSkin(id) || (S.poken || 0) < skin.price) return;
+    S.poken -= skin.price;
+    S.skins = [...(S.skins || []), id];
+    S.skin = id;
+    save(); sync(); renderShop();
+    toast(t('skinBought', { name: t(skin.key) }));
+  }
+  function wearSkin(id) {
+    if (!ownsSkin(id)) return;
+    S.skin = id;
+    save(); sync(); renderShop();
+  }
+  $('tabSkins').onclick = () => { shopTab = 'skins'; renderShop(); };
   $('tabSell').onclick = () => { shopTab = 'sell'; renderShop(); };
   $('tabCds').onclick = () => { shopTab = 'cds'; renderShop(); };
 
