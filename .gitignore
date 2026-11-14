@@ -8,3 +8,4 @@ Payload/
 *.ipa
 
 .firebase/
+*-debug.log
