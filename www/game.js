@@ -53,9 +53,11 @@ const Game = (() => {
   const SELL_PRICES = { popsicle: 150, pizza: 400, pokebowl: 750, phone: 100, monster: 300, diamond: 5000 };
   // Looks for her, bought in the shop. Each skin folder has the same four sheets as the normal pet.
   const SKINS = [
-    { id: 'default', key: 'skinDefault', icon: 'sprites/skins/default_icon.png', dir: 'sprites', price: 0 },
-    { id: 'boxer', key: 'skinBoxer', icon: 'sprites/skins/boxer/icon.png', dir: 'sprites/skins/boxer', price: 10000 },
+    { id: 'default', key: 'skinDefault', icon: 'sprites/skins/default_icon.png', dir: 'sprites', back: 'sprites/wipeuff/back_default.png', price: 0 },
+    { id: 'boxer', key: 'skinBoxer', icon: 'sprites/skins/boxer/icon.png', dir: 'sprites/skins/boxer', back: 'sprites/wipeuff/back_boxer.png', price: 10000 },
   ];
+  // A friend's skin arrives as its folder; this finds its kart picture.
+  const skinBack = (dir) => (SKINS.find((s) => s.dir === dir) || SKINS[0]).back;
   const skinNow = () => SKINS.find((s) => s.id === S.skin && ownsSkin(s.id)) || SKINS[0];
   const ownsSkin = (id) => id === 'default' || (S.skins || []).includes(id);
   const GOLDEN_EVERY_MS = 10 * 60000;
@@ -890,8 +892,16 @@ const Game = (() => {
   }
 
   // ----- canvas minigames -----
-  const MINI_W = 320;
+  // Canvas games are 440 high. On phones they're 320 wide; on computers they widen to fit the screen.
+  let MINI_W = 320;
   const MINI_H = 440;
+  const BASE_W = 320;
+  function fitMiniWidth(game, extra) {
+    const wide = usesKeyboard() && innerWidth >= 900 && !(extra.duel && game.sameShape);
+    if (!wide) return BASE_W;
+    const room = Math.min(innerWidth - 48, 1500) / Math.max(200, innerHeight - (game.pad ? 300 : 210));
+    return Math.max(BASE_W, Math.min(900, Math.round((MINI_H * room) / 2) * 2));
+  }
   const art = (src) => { const i = new Image(); i.src = src; return i; };
   const ART = {
     pizza: art('sprites/pizza.png'), rice: art('sprites/rice.png'),
@@ -908,6 +918,10 @@ const Game = (() => {
     $('miniTitle').textContent = extra.duel ? `${t(title)} · ${t('vs', { name: extra.duel.friendName })}` : t(title);
     $('btnJump').textContent = t(game.padBtn || 'jumpBtn');
     document.querySelector('#padControls .keysHint').textContent = t(game.keysHint || 'keysHint');
+    MINI_W = fitMiniWidth(game, extra);
+    $('miniCanvas').width = MINI_W;
+    $('miniCanvas').style.aspectRatio = `${MINI_W} / ${MINI_H}`;
+    $('s-mini').classList.toggle('wide', MINI_W > BASE_W);
     mini = { ...game, tired, pointerX: MINI_W / 2, raf: 0, last: performance.now(), ...extra };
     if (extra.duel) mini.countdown = 3;
     $('s-mini').classList.toggle('pad', !!game.pad);
@@ -998,6 +1012,7 @@ const Game = (() => {
     return true;
   }
   const PIZZA_PONG = {
+    sameShape: true,
     begin(g) {
       g.you = 0; g.cpu = 0; g.px = MINI_W / 2; g.cx = MINI_W / 2;
       g.py = MINI_H - 30; g.cy = 30;
@@ -1247,7 +1262,17 @@ const Game = (() => {
     draw(g, c) {
       const camY = Math.max(0, Math.min(PARKOUR_MAP.length * TILE - MINI_H, g.y - MINI_H * 0.6));
       c.fillStyle = '#231d33'; c.fillRect(0, 0, MINI_W, MINI_H);
-      c.save(); c.translate(0, -Math.round(camY));
+      // On a wide screen the garden hedge fills the sides of the map.
+      const side = Math.round((MINI_W - BASE_W) / 2);
+      if (side) {
+        c.fillStyle = '#2f6b3f'; c.fillRect(0, 0, side, MINI_H); c.fillRect(side + BASE_W, 0, side, MINI_H);
+        c.fillStyle = '#3f8a4f';
+        for (let y = -Math.round(camY) % TILE - TILE; y < MINI_H; y += TILE) {
+          for (let x = side - TILE; x > -TILE; x -= TILE) { c.fillRect(x + 3, y + 3, 10, 8); c.fillRect(x + 17, y + 14, 11, 8); }
+          for (let x = side + BASE_W; x < MINI_W; x += TILE) { c.fillRect(x + 3, y + 3, 10, 8); c.fillRect(x + 17, y + 14, 11, 8); }
+        }
+      }
+      c.save(); c.translate(side, -Math.round(camY));
       PARKOUR_MAP.forEach((row, y) => [...row].forEach((ch, x) => {
         const px = x * TILE, py = y * TILE;
         if (py + TILE < camY || py > camY + MINI_H) return;
@@ -1304,7 +1329,7 @@ const Game = (() => {
   // Rice falls down four lanes onto four poke bowls; press a bowl as the rice lands on it.
   // It never ends on its own: it speeds up as you score, and too many misses finish it.
   const RHYTHM_LANES = 4;
-  const RHYTHM_LANE_W = MINI_W / RHYTHM_LANES;
+  const laneW = () => MINI_W / RHYTHM_LANES;
   const RHYTHM_HIT_Y = 382;
   const RHYTHM_GOOD = 34; // How far from the bowl (in pixels) a press still counts.
   const RHYTHM_PERFECT = 12;
@@ -1410,19 +1435,19 @@ const Game = (() => {
     draw(g, c) {
       c.fillStyle = '#231d33'; c.fillRect(0, 0, MINI_W, MINI_H);
       for (let i = 0; i < RHYTHM_LANES; i++) {
-        const x = i * RHYTHM_LANE_W;
+        const x = i * laneW();
         c.fillStyle = i % 2 ? '#2b2340' : '#271f3a';
-        c.fillRect(x, 0, RHYTHM_LANE_W, MINI_H);
-        if (g.flash[i]) { c.globalAlpha = g.flash[i] * 3; c.fillStyle = RHYTHM_COLORS[i]; c.fillRect(x, 0, RHYTHM_LANE_W, MINI_H); c.globalAlpha = 1; }
+        c.fillRect(x, 0, laneW(), MINI_H);
+        if (g.flash[i]) { c.globalAlpha = g.flash[i] * 3; c.fillStyle = RHYTHM_COLORS[i]; c.fillRect(x, 0, laneW(), MINI_H); c.globalAlpha = 1; }
         c.fillStyle = RHYTHM_COLORS[i];
-        c.fillRect(x + 4, RHYTHM_HIT_Y - 28, RHYTHM_LANE_W - 8, 4);
+        c.fillRect(x + 4, RHYTHM_HIT_Y - 28, laneW() - 8, 4);
       }
       for (const n of g.notes) {
-        const cx = n.lane * RHYTHM_LANE_W + RHYTHM_LANE_W / 2;
+        const cx = n.lane * laneW() + laneW() / 2;
         c.drawImage(ART.rice, cx - 16, n.y - 10, 32, 20);
       }
       for (let i = 0; i < RHYTHM_LANES; i++) {
-        const cx = i * RHYTHM_LANE_W + RHYTHM_LANE_W / 2;
+        const cx = i * laneW() + laneW() / 2;
         const lift = g.bump[i] ? 6 : 0;
         c.drawImage(ART.bowl, 0, 0, 20, 14, cx - 32, RHYTHM_HIT_Y - 18 - lift, 64, 45);
         if (usesKeyboard()) {
@@ -1451,7 +1476,7 @@ const Game = (() => {
   // A poke-bowl kart race through a big vegetable garden, drawn as a pseudo-3D road (each slice of track
   // is projected onto the screen, nearest last). Three laps against three veggie bots, or against a friend.
   const WU = {
-    SEG: 200, ROAD: 1800, CAM_H: 900, DEPTH: 1 / Math.tan((50 * Math.PI) / 180), DRAW: 110,
+    SEG: 200, ROAD: 2200, CAM_H: 1500, DEPTH: 1 / Math.tan((50 * Math.PI) / 180), DRAW: 320, HALF: BASE_W / 2,
     MAX: 8000, LAPS: 3, CENTRI: 0.3, RUMBLE: 3, BOX_RESPAWN: 3,
   };
   WU.ACCEL = WU.MAX / 4; WU.OFF_DECEL = WU.MAX / 1.6; WU.OFF_LIMIT = WU.MAX / 4;
@@ -1512,10 +1537,22 @@ const Game = (() => {
   function wuProject(p, camX, camY, camZ, roadW) {
     const cz = p.z - camZ;
     p.scale = WU.DEPTH / cz;
-    p.sx = Math.round(MINI_W / 2 + p.scale * (p.x - camX) * MINI_W / 2);
+    p.sx = Math.round(MINI_W / 2 + p.scale * (p.x - camX) * WU.HALF);
     p.sy = Math.round(MINI_H / 2 - p.scale * (p.y - camY) * MINI_H / 2);
-    p.sw = Math.round(p.scale * roadW * MINI_W / 2);
+    p.sw = Math.round(p.scale * roadW * WU.HALF);
     p.cz = cz;
+  }
+  const WU_HAZE = [214, 236, 246];
+  const fogCache = new Map();
+  function wuFog(hex, f) {
+    if (f <= 0) return hex;
+    const key = hex + Math.round(f * 20);
+    if (!fogCache.has(key)) {
+      const q = Math.round(f * 20) / 20;
+      const rgb = [1, 3, 5].map((i, k) => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - q) + WU_HAZE[k] * q));
+      fogCache.set(key, `rgb(${rgb.join(',')})`);
+    }
+    return fogCache.get(key);
   }
   function wuQuad(c, color, x1, y1, w1, x2, y2, w2) {
     c.fillStyle = color;
@@ -1538,11 +1575,11 @@ const Game = (() => {
     begin(g) {
       g.held = {}; g.time = 0; g.countdown = 3; g.msg = null; g.shots = []; g.slicks = []; g.sky = 0; g.sendIn = 0;
       for (const s of WU_TRACK.segs) for (const b of s.boxes) b.gone = 0;
-      g.driver = art(`${skinNow().dir}/idle_sheet.png`);
+      g.driver = art(skinNow().back);
       g.me = wuRacer({ me: true, name: Cloud.user()?.name || t('guestName'), x: g.duel ? (g.duel.host ? -0.35 : 0.35) : 0.3, z: 0 });
       g.racers = [g.me];
       if (g.duel) {
-        g.rival = wuRacer({ name: g.duel.friendName, x: g.duel.host ? 0.35 : -0.35, z: 0, driver: art(`${g.duel.rivalSkin || 'sprites'}/idle_sheet.png`), remote: true });
+        g.rival = wuRacer({ name: g.duel.friendName, x: g.duel.host ? 0.35 : -0.35, z: 0, driver: art(skinBack(g.duel.rivalSkin)), remote: true });
         g.racers.push(g.rival);
       } else {
         WU_BOTS.forEach((b, i) => g.racers.push(wuRacer({
@@ -1699,22 +1736,25 @@ const Game = (() => {
       sky.addColorStop(0, '#7cc8f4'); sky.addColorStop(1, '#d6f0ff');
       c.fillStyle = sky; c.fillRect(0, 0, MINI_W, MINI_H);
       c.fillStyle = '#fff';
-      for (let i = 0; i < 4; i++) {
-        const x = ((i * 110 - g.sky * 120) % 440 + 440) % 440 - 60;
+      for (let i = 0, n = Math.ceil(MINI_W / 110) + 1; i < n; i++) {
+        const x = ((i * 110 - g.sky * 120) % (n * 110) + n * 110) % (n * 110) - 60;
         c.fillRect(x, 40 + (i % 2) * 30, 50, 10); c.fillRect(x + 10, 32 + (i % 2) * 30, 28, 8);
       }
-      c.fillStyle = '#4d9a52';
-      for (let i = 0; i < 9; i++) {
-        const x = ((i * 50 - g.sky * 300) % 450 + 450) % 450 - 60;
+      c.fillStyle = '#9cc79a';
+      for (let i = 0, n = Math.ceil(MINI_W / 50) + 2; i < n; i++) {
+        const x = ((i * 50 - g.sky * 300) % (n * 50) + n * 50) % (n * 50) - 60;
         c.beginPath(); c.arc(x, MINI_H / 2 + 6, 34 + (i % 3) * 8, Math.PI, 0); c.fill();
       }
-      c.fillStyle = '#6fbf5a'; c.fillRect(0, MINI_H / 2, MINI_W, MINI_H / 2);
+      const ground = c.createLinearGradient(0, MINI_H / 2, 0, MINI_H * 0.7);
+      ground.addColorStop(0, '#d6ecf6'); ground.addColorStop(1, '#62b04f');
+      c.fillStyle = ground; c.fillRect(0, MINI_H / 2, MINI_W, MINI_H / 2);
       const me = g.me;
-      const base = wuSeg(me.z);
-      const pct = (me.z % WU.SEG) / WU.SEG;
-      const camZ = me.z - WU.CAM_H * WU.DEPTH * 1.6;
-      const camSeg = wuSeg(camZ);
-      const camY = WU.CAM_H + camSeg.p1.y + (camSeg.p2.y - camSeg.p1.y) * ((((camZ % WU.SEG) + WU.SEG) % WU.SEG) / WU.SEG);
+      // The road is drawn from the camera (a little behind her) forwards, so it reaches the bottom of the screen.
+      const L = WU_TRACK.length;
+      const camZ = (((me.z - WU.CAM_H * WU.DEPTH * 1.6) % L) + L) % L;
+      const base = wuSeg(camZ);
+      const pct = (camZ % WU.SEG) / WU.SEG;
+      const camY = WU.CAM_H + base.p1.y + (base.p2.y - base.p1.y) * pct;
       let maxY = MINI_H, x = 0, dx = -(base.curve * pct);
       const drawn = [];
       for (let n = 0; n < WU.DRAW; n++) {
@@ -1728,11 +1768,12 @@ const Game = (() => {
         drawn.push(seg);
         if (p1.cz <= WU.DEPTH || p2.sy >= p1.sy || p2.sy >= maxY) continue;
         const band = Math.floor(seg.i / WU.RUMBLE) % 2;
-        c.fillStyle = band ? '#6fbf5a' : '#62b04f';
+        const fog = Math.max(0, (n / WU.DRAW - 0.35) / 0.65) ** 1.4;
+        c.fillStyle = wuFog(band ? '#6fbf5a' : '#62b04f', fog);
         c.fillRect(0, p2.sy, MINI_W, p1.sy - p2.sy + 1);
-        wuQuad(c, band ? '#d94c3c' : '#f6eedd', p1.sx, p1.sy, p1.sw * 1.12, p2.sx, p2.sy, p2.sw * 1.12);
-        wuQuad(c, band ? '#c9a46a' : '#c09a60', p1.sx, p1.sy, p1.sw, p2.sx, p2.sy, p2.sw);
-        if (band) wuQuad(c, '#efe2c2', p1.sx, p1.sy, p1.sw * 0.03, p2.sx, p2.sy, p2.sw * 0.03);
+        wuQuad(c, wuFog(band ? '#d94c3c' : '#f6eedd', fog), p1.sx, p1.sy, p1.sw * 1.12, p2.sx, p2.sy, p2.sw * 1.12);
+        wuQuad(c, wuFog(band ? '#c9a46a' : '#c09a60', fog), p1.sx, p1.sy, p1.sw, p2.sx, p2.sy, p2.sw);
+        if (band) wuQuad(c, wuFog('#efe2c2', fog), p1.sx, p1.sy, p1.sw * 0.03, p2.sx, p2.sy, p2.sw * 0.03);
         if (seg.i < 3) wuQuad(c, seg.i % 2 ? '#222' : '#fff', p1.sx, p1.sy, p1.sw, p2.sx, p2.sy, p2.sw);
         maxY = p1.sy;
       }
@@ -1740,7 +1781,7 @@ const Game = (() => {
       const sprite = (img, worldW, seg, offX, lift = 0) => {
         const p = seg.view.p1;
         if (!img.complete || !img.naturalWidth || p.cz <= WU.DEPTH) return;
-        const w = worldW * p.scale * MINI_W / 2;
+        const w = worldW * p.scale * WU.HALF;
         const h = (w * img.naturalHeight) / img.naturalWidth;
         const sx = p.sx + p.sw * offX - w / 2;
         const sy = p.sy - h - lift * p.scale * MINI_H / 2;
@@ -1763,22 +1804,22 @@ const Game = (() => {
           const driver = k.driverArt;
           if (k.driver) { // A friend in their own kart: their head pokes out of the bowl.
             if (k.driver.complete && k.driver.naturalWidth) {
-              const p = seg.view.p1, w = 360 * p.scale * MINI_W / 2;
-              c.drawImage(k.driver, 0, 0, 44, 34, p.sx + p.sw * k.x - w / 2, p.sy - w * 1.15, w, w * 34 / 44);
+              const p = seg.view.p1, w = 260 * p.scale * WU.HALF;
+              c.drawImage(k.driver, p.sx + p.sw * k.x - w / 2, p.sy - w * 1.45, w, (w * 28) / 30);
             }
-          } else if (driver) sprite(driver, 380, seg, k.x, 260);
+          } else if (driver) sprite(driver, 300, seg, k.x, 230);
           sprite(WU_ART.kart, WU_SIZE.kart, seg, k.x + (k.spin > 0 ? Math.sin(g.time * 30) * 0.05 : 0));
         }
       }
       // The player's own kart, always near the bottom of the screen.
       const wob = me.spin > 0 ? Math.sin(g.time * 30) * 8 : 0;
       const bounce = me.speed > 100 ? Math.round(Math.sin(g.time * 22)) : 0;
-      const kx = MINI_W / 2 - 60 + wob, ky = MINI_H - 92 + bounce;
-      if (g.driver.complete) c.drawImage(g.driver, 0, 0, 44, 36, kx + 25, ky - 46, 70, 57);
-      c.drawImage(WU_ART.kart, kx, ky, 120, 78);
+      const kx = MINI_W / 2 - 50 + wob, ky = MINI_H - 80 + bounce;
+      if (g.driver.complete) c.drawImage(g.driver, kx + 32, ky - 22, 36, 34);
+      c.drawImage(WU_ART.kart, kx, ky, 100, 65);
       if (me.boost > 0) {
         c.fillStyle = '#9be35a';
-        for (let i = 0; i < 4; i++) c.fillRect(kx + 30 + i * 18, ky + 76 + Math.random() * 6, 6, 6 + Math.random() * 8);
+        for (let i = 0; i < 4; i++) c.fillRect(kx + 24 + i * 16, ky + 63 + Math.random() * 6, 6, 6 + Math.random() * 8);
       }
       // Item slot, messages and the countdown.
       c.fillStyle = '#231d33cc'; c.fillRect(MINI_W - 58, 8, 50, 50);
@@ -1787,7 +1828,9 @@ const Game = (() => {
       c.textAlign = 'center';
       if (g.msg) {
         c.globalAlpha = Math.min(1, g.msg.time * 2);
-        c.font = 'bold 20px "Courier New", monospace'; c.lineWidth = 4; c.strokeStyle = '#231d33';
+        c.font = 'bold 20px "Courier New", monospace';
+        if (c.measureText(g.msg.text).width > MINI_W - 24) c.font = 'bold 15px "Courier New", monospace';
+        c.lineWidth = 4; c.strokeStyle = '#231d33';
         c.strokeText(g.msg.text, MINI_W / 2, 120); c.fillStyle = '#ffc857'; c.fillText(g.msg.text, MINI_W / 2, 120);
         c.globalAlpha = 1;
       }
@@ -1864,7 +1907,7 @@ const Game = (() => {
       if (msg.t === 'hello') {
         duel.rivalSkin = msg.skin;
         if (mini?.duel) mini.duel.rivalSkin = msg.skin;
-        if (mini?.rival) mini.rival.driver = art(`${msg.skin}/idle_sheet.png`);
+        if (mini?.rival) mini.rival.driver = art(skinBack(msg.skin));
         return;
       }
       if (msg.t === 'quit') return finishDuel('win', t('duelQuit', { name: duel.friendName }));
@@ -2938,7 +2981,7 @@ const Game = (() => {
   $('miniCanvas').onpointerdown = (e) => {
     miniPointer(e);
     if (mini?.pad && mini.box) parkourPress();
-    if (mini?.keys) mini.press(mini, Math.floor(mini.pointerX / RHYTHM_LANE_W));
+    if (mini?.keys) mini.press(mini, Math.floor(mini.pointerX / laneW()));
   };
   $('miniCanvas').onpointermove = miniPointer;
   $('btnBoss').onclick = () => show('bosses');
