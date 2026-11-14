@@ -404,6 +404,13 @@ const Game = (() => {
     music.style.marginTop = '12px';
     music.onclick = () => { Music.setEnabled(!Music.enabled()); renderSettings(); };
     list.append(music);
+    if (Notify.available()) {
+      const note = document.createElement('button');
+      note.textContent = `${t('notifications')}: ${t(Notify.enabled() ? 'musicOn' : 'musicOff')}`;
+      if (Notify.enabled()) note.className = 'picked';
+      note.onclick = async () => { await Notify.setEnabled(!Notify.enabled()); renderSettings(); };
+      list.append(note);
+    }
     const tut = document.createElement('button');
     tut.textContent = t('tutReplay');
     tut.onclick = startTutorial;
@@ -1867,6 +1874,7 @@ const Game = (() => {
     $('tut').classList.remove('on');
     S.tutorialDone = true;
     save();
+    Notify.askOnce();
   }
   function drawTutorial() {
     if (!tutorialOn()) return;
@@ -1902,6 +1910,47 @@ const Game = (() => {
   $('btnTutSkip').onclick = endTutorial;
   window.addEventListener('resize', drawTutorial);
 
+  // ----- phone reminders -----
+  // Worked out from her bars when the app goes to the background, and cleared when it comes back.
+  const QUIET_FROM = 22; // No gentle reminders from 22:00...
+  const QUIET_TO = 9; // ...until 9:00. Urgent ones still come, since she could die overnight.
+  function outsideQuietHours(ms) {
+    const d = new Date(ms);
+    if (d.getHours() >= QUIET_FROM) { d.setDate(d.getDate() + 1); d.setHours(QUIET_TO, 0, 0, 0); }
+    else if (d.getHours() < QUIET_TO) d.setHours(QUIET_TO, 0, 0, 0);
+    return d.getTime();
+  }
+  function reminders() {
+    tick();
+    if (isDead()) return [];
+    const now = Date.now();
+    const list = [];
+    const inHours = (h) => Math.max(now + 30 * 60000, now + h * 3600000);
+    const until = (k, level) => (S[k] - level) / DECAY_PER_HOUR[k];
+    const add = (id, key, at, urgent = false, vars = {}) => list.push({
+      id, title: t(`${key}Title`, vars), body: t(`${key}Body`, vars), at: urgent ? at : outsideQuietHours(at),
+    });
+    if (!cheat('god')) {
+      if (S.food > 30) add(102, 'notifHungry', inHours(until('food', 30)));
+      add(103, 'notifStarving', inHours(until('food', 8)), true);
+      if (S.energy > 30) add(104, 'notifTired', inHours(until('energy', 30)));
+      add(105, 'notifExhausted', inHours(until('energy', 8)), true);
+      if (S.joy > 25) add(106, 'notifLonely', inHours(until('joy', 25)));
+    }
+    // Tomorrow evening, the streak goes up by one if she gets a visit.
+    const evening = new Date(Cloud.now());
+    evening.setDate(evening.getDate() + 1); evening.setHours(19, 0, 0, 0);
+    add(101, 'notifStreak', evening.getTime(), false, { n: S.streak + 1 });
+    // The next daily reward, in the morning.
+    const morning = new Date(Cloud.now());
+    if (!dailyReady() || morning.getHours() >= 10) morning.setDate(morning.getDate() + 1);
+    morning.setHours(10, 0, 0, 0);
+    add(107, 'notifDaily', morning.getTime());
+    return list;
+  }
+  function leavingApp() { Notify.plan(reminders()); }
+  function backInApp() { Notify.clear(); }
+
   // ----- accounts -----
   async function enterGame() {
     S = loadLocal();
@@ -1929,7 +1978,8 @@ const Game = (() => {
     const msg = checkIn();
     save(); show('home');
     if (msg) { toast(msg); play($('pet'), 'happy', restingAnim()); }
-    if (S.tutorialDone === false) startTutorial();
+    if (S.tutorialDone === false) startTutorial(); else Notify.askOnce();
+    backInApp();
     claimGifts();
     homeTimers();
   }
@@ -2039,7 +2089,9 @@ const Game = (() => {
   $('btnProfileBack').onclick = () => show(profileFrom);
   $('btnGiftClose').onclick = closeGift;
   $('btnGiftSend').onclick = sendGift;
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); sync(); } });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); sync(); leavingApp(); } else backInApp();
+  });
   window.addEventListener('online', sync);
   setInterval(homeTimers, 1000);
   setInterval(() => { if (!document.hidden) claimGifts(); }, 60000);
@@ -2048,5 +2100,5 @@ const Game = (() => {
   I18n.apply();
   if (Cloud.user() || localStorage.getItem('sbuffogotchi.guest')) enterGame(); else show('login');
 
-  return { state: () => S, set: (patch) => { Object.assign(S, patch); save(); render(); }, checkIn, merge, xpNeeded, show, spawnGolden, mini: () => mini };
+  return { state: () => S, set: (patch) => { Object.assign(S, patch); save(); render(); }, checkIn, merge, xpNeeded, show, spawnGolden, mini: () => mini, reminders };
 })();
