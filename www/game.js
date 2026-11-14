@@ -179,7 +179,7 @@ const Game = (() => {
   function show(name) {
     document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('on', s.id === `s-${name}`));
     Music.play({ train: 'action', whack: 'action', order: 'action', mini: 'action', boss: 'boss' }[name] || 'home');
-    if (name === 'home') { render(); play($('pet'), restingAnim()); }
+    if (name === 'home') { render(); play($('pet'), restingAnim()); setTimeout(showNextGift, 300); }
     if (name === 'bosses') renderBossList();
     if (name === 'trainMenu') renderGameMenu();
     if (name === 'bag') renderBag();
@@ -411,6 +411,13 @@ const Game = (() => {
       note.onclick = async () => { await Notify.setEnabled(!Notify.enabled()); renderSettings(); };
       list.append(note);
     }
+    const gifts = document.createElement('button');
+    gifts.textContent = `${t('giftSetting')}: ${t({ ask: 'giftModeAsk', auto: 'giftModeAuto', off: 'giftModeOff' }[giftMode()])}`;
+    gifts.onclick = () => {
+      S.giftMode = { ask: 'auto', auto: 'off', off: 'ask' }[giftMode()];
+      save(); sync(); renderSettings();
+    };
+    list.append(gifts);
     const tut = document.createElement('button');
     tut.textContent = t('tutReplay');
     tut.onclick = startTutorial;
@@ -1348,6 +1355,7 @@ const Game = (() => {
     food: Math.round(S.food), energy: Math.round(S.energy), joy: Math.round(S.joy), seen: Cloud.now(),
     str: S.str, shields: S.shields, rhythmBest: S.rhythmBest || 0, deaths: S.life || 0,
     items: Object.values(S.items).reduce((sum, n) => sum + (n || 0), 0), createdAt: S.createdAt,
+    noGifts: giftMode() === 'off',
   });
   let friends = null; // { list, hearts, fans } once loaded
   const ignored = () => { try { return JSON.parse(localStorage.getItem(IGNORED_KEY)) || []; } catch { return []; } };
@@ -1772,6 +1780,7 @@ const Game = (() => {
   let giftPick = {};
   function openGift(id) {
     const st = friends?.fans.get(id)?.stats;
+    if (st?.noGifts) { toast(t('giftRefused', { name: st.name || id })); return; }
     giftTo = { id, name: st?.name || id };
     giftPick = {};
     $('giftWinTitle').textContent = t('giftTitle', { name: giftTo.name });
@@ -1827,23 +1836,68 @@ const Game = (() => {
     closeGift();
     toast(t('giftSent', { name: giftTo.name, items: itemsText(items) }));
   }
+  // How gifts arrive: 'ask' shows each one on the home screen, 'auto' takes them all, 'off' turns them away.
+  const giftMode = () => S.giftMode || 'ask';
   let claiming = false;
+  let giftQueue = [];
   async function claimGifts() {
     if (!Cloud.user() || claiming) return;
     claiming = true;
     try {
-      const got = [];
-      for (const gift of await Cloud.incomingGifts()) {
-        // Only the copy that is actually deleted here counts, so two devices can't both collect it.
-        if (!(await Cloud.claimGift(gift.id))) continue;
-        const items = Object.fromEntries(Object.entries(gift.items).filter(([id, n]) => ITEMS[id] && n > 0));
-        addItems(items);
-        got.push(t('giftGot', { name: gift.fromName || gift.from, items: itemsText(items) }));
+      const incoming = await Cloud.incomingGifts();
+      if (giftMode() === 'ask') {
+        const known = new Set(giftQueue.map((gift) => gift.id));
+        giftQueue.push(...incoming.filter((gift) => !known.has(gift.id)));
+        showNextGift();
+      } else {
+        const got = [];
+        for (const gift of incoming) {
+          // Only the copy that is actually deleted here counts, so two devices can't both collect it.
+          if (!(await Cloud.claimGift(gift.id))) continue;
+          if (giftMode() === 'auto') got.push(takeGift(gift));
+        }
+        if (got.length) { save(); render(); toast(got.join(' · ')); }
       }
-      if (got.length) { save(); render(); toast(got.join(' · ')); }
     } catch { /* tried again later */ }
     claiming = false;
   }
+  function giftItems(gift) {
+    return Object.fromEntries(Object.entries(gift.items).filter(([id, n]) => ITEMS[id] && n > 0));
+  }
+  function takeGift(gift) {
+    const items = giftItems(gift);
+    addItems(items);
+    return t('giftGot', { name: gift.fromName || gift.from, items: itemsText(items) });
+  }
+  // One gift at a time, only on the home screen and never over another window or the tutorial.
+  function showNextGift() {
+    if (!giftQueue.length || $('giftAsk').classList.contains('on')) return;
+    if (!$('s-home').classList.contains('on') || tutorialOn() || document.querySelector('.modal.on')) return;
+    const gift = giftQueue[0];
+    $('giftAskText').textContent = t('giftAskText', { name: gift.fromName || gift.from });
+    const list = $('giftAskItems');
+    list.replaceChildren();
+    for (const [id, n] of Object.entries(giftItems(gift))) {
+      const span = document.createElement('span');
+      const img = document.createElement('img');
+      img.src = ITEMS[id].icon; img.alt = '';
+      span.append(img, `${n} ${t(ITEMS[id].key)}`);
+      list.append(span);
+    }
+    $('giftAsk').classList.add('on');
+  }
+  async function answerGift(accept) {
+    const gift = giftQueue.shift();
+    $('giftAsk').classList.remove('on');
+    if (!gift) return;
+    if (await Cloud.claimGift(gift.id).catch(() => false)) {
+      if (accept) { toast(takeGift(gift)); save(); render(); play($('pet'), 'happy', restingAnim()); }
+      else toast(t('giftDeclined', { name: gift.fromName || gift.from }));
+    }
+    setTimeout(showNextGift, 400);
+  }
+  $('btnGiftAccept').onclick = () => answerGift(true);
+  $('btnGiftDecline').onclick = () => answerGift(false);
 
   // ----- tutorial -----
   // Shown once when a brand-new Sbuffling hatches, and again from Settings.
@@ -1872,6 +1926,7 @@ const Game = (() => {
   function endTutorial() {
     tutStep = -1;
     $('tut').classList.remove('on');
+    setTimeout(showNextGift, 300);
     S.tutorialDone = true;
     save();
     Notify.askOnce();

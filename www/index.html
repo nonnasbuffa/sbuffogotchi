@@ -93,6 +93,7 @@ html,body,button,canvas,#app *{-webkit-user-select:none;user-select:none;-webkit
 #tutPic{width:66px;height:90px;image-rendering:pixelated}#tutPic[hidden]{display:none}#tutText{font-size:16px;line-height:1.4}
 .tutFoot{display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px}.tutFoot .main{min-width:120px}.tutFoot .link{min-height:0;padding:4px}
 @media (min-width:900px) and (min-aspect-ratio:5/4){#tutText{font-size:19px}#tutBox{width:520px}}
+.giftAskPic{width:64px;height:64px;image-rendering:pixelated;align-self:center}.giftAskItems{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 16px}.giftAskItems span{display:inline-flex;align-items:center;gap:6px;font-weight:bold}.giftAskItems img{width:32px;height:32px;image-rendering:pixelated}
 .toast{z-index:30;position:fixed;left:16px;right:16px;bottom:24px;max-width:448px;margin:auto;background:#000c;border:2px solid var(--gold);padding:10px;text-align:center;font-weight:bold;pointer-events:none;opacity:0;transition:opacity .2s}.toast.on{opacity:1}
 .side{display:contents}
 .top>*{flex-shrink:0}#btnAccount{flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -268,6 +269,13 @@ button{min-height:58px;font-size:19px}
     <button class="boss" id="btnBossTap" style="min-height:80px"></button>
   </section>
 </div>
+<div class="modal" id="giftAsk"><div class="panel center">
+  <img class="giftAskPic" src="sprites/icons/gift.png" alt="">
+  <h2 data-i18n="giftAskTitle"></h2>
+  <p id="giftAskText"></p>
+  <div class="giftAskItems" id="giftAskItems"></div>
+  <div class="row2"><button id="btnGiftDecline" data-i18n="giftDecline"></button><button class="main" id="btnGiftAccept" data-i18n="giftAccept"></button></div>
+</div></div>
 <div class="modal" id="daily"><div class="panel">
   <h2 data-i18n="dailyTitle"></h2>
   <div class="days" id="dailyDays"></div>
