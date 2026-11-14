@@ -199,6 +199,7 @@ const Game = (() => {
     if (name === 'trainMenu') renderGameMenu();
     if (name === 'bag') renderBag();
     if (name === 'shop') renderShop();
+    if (name === 'ach') renderAchievements();
     if (name === 'settings') renderSettings();
     if (name === 'friends') loadFriends();
     if (name !== 'home') removeGolden();
@@ -219,10 +220,11 @@ const Game = (() => {
     $('btnAccount').textContent = u ? u.name : t('guestName');
     $('btnAdmin').hidden = !cheat('unlocked');
     const lowest = Math.min(S.food, S.energy, S.joy);
-    $('say').textContent = lowest >= 25 ? '' : S.food === lowest ? t(hasItemFor('food') ? 'hungry' : 'noFood') : S.energy === lowest ? t(hasItemFor('energy') ? 'tired' : 'noEnergy') : t('lonely');
+    $('say').textContent = lowest >= 25 ? (Date.now() < sighUntil ? sighText : '') : S.food === lowest ? t(hasItemFor('food') ? 'hungry' : 'noFood') : S.energy === lowest ? t(hasItemFor('energy') ? 'tired' : 'noEnergy') : t('lonely');
     const need = nextBossLevel();
     $('btnBossLabel').textContent = t(S.level >= need ? 'bossReady' : 'bosses');
     renderInfo(need);
+    checkAchievements();
   }
   // The computer layout's info panel: progress, what's next and what's in the bag.
   function renderInfo(need) {
@@ -403,7 +405,7 @@ const Game = (() => {
         const have = S.items[id] || 0;
         list.append(shopRow(ITEMS[id].icon, `${t(ITEMS[id].key)} x${have}`, t('sellFor', { p: fmtPoken(SELL_PRICES[id]) }), [
           shopButton(t('sell'), () => sellItem(id, 1), !have),
-          shopButton(t('sellAll'), () => sellItem(id, have), have < 2, ''),
+          shopButton('+', () => openSell(id), have < 2, ''),
         ], have ? '' : 'empty'));
       }
       return;
@@ -441,6 +443,36 @@ const Game = (() => {
     save(); renderShop();
     toast(t('sold', { n, item: t(ITEMS[id].key), p: fmtPoken(SELL_PRICES[id] * n) }));
   }
+  // "+" opens a slider to pick how many to sell at once.
+  let sellId = null;
+  function openSell(id) {
+    const have = S.items[id] || 0;
+    if (have < 1) return;
+    sellId = id;
+    $('sellPic').src = ITEMS[id].icon;
+    $('sellName').textContent = t(ITEMS[id].key);
+    $('sellRange').max = String(have);
+    $('sellRange').value = String(Math.min(have, Math.max(1, Math.ceil(have / 2))));
+    sellShow();
+    $('sellWin').classList.add('on');
+  }
+  function sellShow() {
+    const n = Number($('sellRange').value);
+    $('sellCount').textContent = t('sellHow', { n, max: S.items[sellId] || 0, p: fmtPoken(SELL_PRICES[sellId] * n) });
+  }
+  $('sellRange').oninput = sellShow;
+  $('btnSellMinus').onclick = () => { $('sellRange').value = String(Number($('sellRange').value) - 1); sellShow(); };
+  $('btnSellPlus').onclick = () => { $('sellRange').value = String(Number($('sellRange').value) + 1); sellShow(); };
+  $('btnSellCancel').onclick = () => $('sellWin').classList.remove('on');
+  $('btnSellGo').onclick = () => {
+    const id = sellId, n = Number($('sellRange').value);
+    $('sellWin').classList.remove('on');
+    if (!(n > 0) || n > (S.items[id] || 0)) return;
+    S.items[id] -= n;
+    S.poken = (S.poken || 0) + SELL_PRICES[id] * n;
+    save(); renderShop();
+    toast(t('sold', { n, item: t(ITEMS[id].key), p: fmtPoken(SELL_PRICES[id] * n) }));
+  };
   function buyCd(id) {
     const cd = CDS.find((c) => c.id === id);
     if (!cd || ownsCd(id) || (S.poken || 0) < cd.price) return;
@@ -524,6 +556,107 @@ const Game = (() => {
   $('btnCdStop').onclick = stopCd;
   $('btnCdClose').onclick = () => $('cdWin').classList.remove('on');
   $('btnCdShop').onclick = () => { $('cdWin').classList.remove('on'); shopTab = 'cds'; show('shop'); };
+
+  // ----- achievements -----
+  // Each one checks the save for [how far, goal]; finished ones are claimed for Poken.
+  // Beta players: anyone whose Sbuffling (or account) existed before 14 November 2026.
+  const BETA_END = new Date(2026, 10, 14).getTime();
+  const isBeta = () => (S.createdAt && S.createdAt < BETA_END) || (S.lastDay != null && S.lastDay < dayNumber(BETA_END)) ? 1 : 0;
+  const ACHIEVEMENTS = [
+    { id: 'beta', prize: 5000, special: true, check: () => [isBeta(), 1] },
+    { id: 'hatch', prize: 100, check: () => [S.tutorialDone !== false && S.lastDay != null ? 1 : 0, 1] },
+    { id: 'level5', prize: 250, check: () => [S.level, 5] },
+    { id: 'level10', prize: 600, check: () => [S.level, 10] },
+    { id: 'level25', prize: 2000, check: () => [S.level, 25] },
+    { id: 'streak7', prize: 500, check: () => [S.streak, 7] },
+    { id: 'streak30', prize: 2500, check: () => [S.streak, 30] },
+    { id: 'boss1', prize: 300, check: () => [S.bossWins, 1] },
+    { id: 'boss5', prize: 1000, check: () => [S.bossWins, 5] },
+    { id: 'boss10', prize: 3000, check: () => [S.bossWins, 10] },
+    { id: 'friend1', prize: 300, check: () => [S.friendCount || 0, 1] },
+    { id: 'gift1', prize: 300, check: () => [S.giftsSent || 0, 1] },
+    { id: 'duel1', prize: 400, check: () => [S.duelWins || 0, 1] },
+    { id: 'duel10', prize: 2000, check: () => [S.duelWins || 0, 10] },
+    { id: 'race1', prize: 500, check: () => [S.raceWins || 0, 1] },
+    { id: 'rhythm50', prize: 800, check: () => [S.rhythmBest || 0, 50] },
+    { id: 'cd1', prize: 300, check: () => [(S.cds || []).length, 1] },
+    { id: 'cdAll', prize: 2000, check: () => [CDS.filter((c) => (S.cds || []).includes(c.id)).length, CDS.length] },
+    { id: 'skin1', prize: 1000, check: () => [(S.skins || []).length, 1] },
+  ];
+  const achDone = (a) => { const [n, goal] = a.check(); return n >= goal; };
+  const achClaimed = (a) => !!(S.achieved || {})[a.id];
+  const claimable = () => ACHIEVEMENTS.filter((a) => achDone(a) && !achClaimed(a));
+  // Tells the player once when a new one is ready, and lights up the trophy button.
+  function checkAchievements() {
+    const ready = claimable();
+    $('achDot').hidden = !ready.length;
+    S.achSeen = S.achSeen || {};
+    const fresh = ready.filter((a) => !S.achSeen[a.id]);
+    if (!fresh.length) return;
+    for (const a of fresh) S.achSeen[a.id] = true;
+    save();
+    toast(t('achUnlocked', { name: t(`ach_${a0(fresh)}`) }));
+  }
+  const a0 = (list) => list[0].id;
+  function renderAchievements() {
+    const list = $('achList');
+    list.replaceChildren();
+    const got = ACHIEVEMENTS.filter(achClaimed).length;
+    $('achCount').textContent = t('achCount', { a: got, b: ACHIEVEMENTS.length });
+    for (const a of ACHIEVEMENTS) {
+      const [n, goal] = a.check();
+      const done = n >= goal, claimed = achClaimed(a);
+      const row = document.createElement('div');
+      row.className = `bossRow achRow${claimed ? ' claimed' : done ? ' ready' : ' locked'}${a.special ? ' special' : ''}`;
+      const img = document.createElement('img');
+      img.src = 'sprites/icons/trophy.png'; img.alt = '';
+      const text = document.createElement('div');
+      const b = document.createElement('b'); b.textContent = t(`ach_${a.id}`);
+      const about = document.createElement('span'); about.className = 'dim';
+      about.textContent = `${t(`achAbout_${a.id}`)}${goal > 1 ? ` (${Math.min(n, goal)}/${goal})` : ''}`;
+      const prize = document.createElement('span'); prize.className = 'achPrize'; prize.textContent = fmtPoken(a.prize);
+      text.append(b, about, prize);
+      const btn = document.createElement('button');
+      btn.className = claimed ? '' : 'main';
+      btn.textContent = claimed ? '✓' : t('achClaim');
+      btn.disabled = claimed || !done;
+      btn.onclick = () => claimAchievement(a);
+      row.append(img, text, btn);
+      list.append(row);
+    }
+  }
+  function claimAchievement(a) {
+    if (!achDone(a) || achClaimed(a)) return;
+    S.achieved = { ...(S.achieved || {}), [a.id]: Date.now() };
+    S.poken = (S.poken || 0) + a.prize;
+    save(); sync(); renderAchievements(); checkAchievements();
+    toast(t('achClaimed', { name: t(`ach_${a.id}`), p: fmtPoken(a.prize) }));
+  }
+  $('btnAch').onclick = () => show('ach');
+
+  // ----- her sighs -----
+  // Every one to three minutes on the home screen she lets out a sigh, in Italian whatever the language.
+  // "Uff" and "uffa" come with her real sigh.
+  const ufSound = new Audio('sounds/uf.mp4');
+  let sighText = '', sighUntil = 0;
+  function seasonWord() {
+    const m = new Date().getMonth();
+    if (m >= 2 && m <= 4) return 'Ufla!';
+    if (m >= 5 && m <= 7) return 'Sto in un bagno di sudore..';
+    return 'Brr!';
+  }
+  function sigh() {
+    setTimeout(sigh, 60000 + Math.random() * 120000);
+    if (document.hidden || !$('s-home').classList.contains('on') || document.querySelector('.modal.on') || tutorialOn() || isDead()) return;
+    const words = ['uff..', 'uffa!', seasonWord()];
+    sighText = words[Math.floor(Math.random() * words.length)];
+    sighUntil = Date.now() + 4000;
+    render();
+    play($('pet'), 'sad', restingAnim());
+    if (sighText.startsWith('uff') && Music.enabled()) { ufSound.currentTime = 0; ufSound.play().catch(() => {}); }
+    setTimeout(() => { if (Date.now() >= sighUntil && $('s-home').classList.contains('on')) render(); }, 4100);
+  }
+  setTimeout(sigh, 60000 + Math.random() * 120000);
 
   // ----- death -----
   const isDead = () => S.food <= 0 || S.energy <= 0;
@@ -1725,6 +1858,7 @@ const Game = (() => {
         return finishDuel('win', t('wuDuelWon'));
       }
       const place = this.place(g, me);
+      if (place === 1) S.raceWins = (S.raceWins || 0) + 1;
       const prize = [[20, 40, 3, 300], [12, 25, 2, 150], [8, 15, 1, 75], [5, 8, 0, 25]][place - 1];
       const tired = mini.tired;
       if (!tired) S.poken = (S.poken || 0) + prize[3];
@@ -1929,6 +2063,7 @@ const Game = (() => {
   // Ends a duel for this player: 'win', 'lose', 'draw', or 'gone' when the connection dropped.
   function finishDuel(result, message) {
     if (!mini?.duel) return;
+    const duelGame = duel?.game;
     stopMini();
     closeDuel();
     const parts = [];
@@ -1937,6 +2072,7 @@ const Game = (() => {
       S.joy = clamp(S.joy + joy);
       S.poken = (S.poken || 0) + poken;
       if (result === 'win') S.duelWins = (S.duelWins || 0) + 1;
+      if (result === 'win' && duelGame === 'race') S.raceWins = (S.raceWins || 0) + 1;
       if (result === 'lose') S.duelLosses = (S.duelLosses || 0) + 1;
       parts.push(t('plusJoy', { n: joy }), t('plusXp', { n: addXp(xp) }), `+${poken} Poken`);
     }
@@ -2213,6 +2349,8 @@ const Game = (() => {
     try {
       const [mine, fans] = await Promise.all([Cloud.getProfile(Cloud.me()), Cloud.addedMe()]);
       friends = { list: mine?.friends || [], hearts: mine?.hearts || {}, fans: new Map(fans.map((p) => [p.id, p])) };
+      const count = friends.list.filter((n) => friends.fans.has(n)).length;
+      if (count !== S.friendCount) { S.friendCount = count; save(); }
       $('friendsMsg').textContent = '';
       claimHearts();
       renderFriends();
@@ -2684,6 +2822,7 @@ const Game = (() => {
       return;
     }
     for (const [id, n] of Object.entries(items)) S.items[id] -= n;
+    S.giftsSent = (S.giftsSent || 0) + 1;
     save(); render();
     closeGift();
     toast(t('giftSent', { name: giftTo.name, items: itemsText(items) }));

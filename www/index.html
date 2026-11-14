@@ -101,6 +101,10 @@ html,body,button,canvas,#app *{-webkit-user-select:none;user-select:none;-webkit
 #shopList{gap:5px;flex:1;min-height:0;overflow-y:auto}#shopList .bossRow{grid-template-columns:48px 1fr 128px;gap:8px;padding:4px 8px}#shopList .bossRow img{width:48px;height:48px}#shopList .bossRow.empty img{opacity:.4}#shopList .cdRow.picked{border-color:var(--green)}
 .shopBtns{display:grid;grid-template-columns:1fr 1fr;gap:4px}.shopBtns button{min-height:38px;padding:4px;font-size:14px}.shopBtns button:only-child{grid-column:1/-1}
 #shopList .skinRow img{width:44px;height:54px}#duelGames .bossRow{grid-template-columns:48px 1fr 110px;gap:8px;padding:4px 8px}#duelGames .bossRow img{width:48px;height:48px;object-fit:contain;image-rendering:pixelated}#duelGames .bossRow button{min-height:40px;padding:4px;font-size:14px}
+#btnAch{position:relative}#btnAch .dot{position:absolute;top:2px;right:2px;width:10px;height:10px;background:var(--red);border:2px solid var(--line)}
+#achList{gap:5px;flex:1;min-height:0;overflow-y:auto}#achList .bossRow{grid-template-columns:44px 1fr 92px;gap:8px;padding:4px 8px}#achList .bossRow img{width:44px;height:44px}
+.achRow.locked img{filter:grayscale(1) opacity(.45)}.achRow.ready{border-color:var(--gold)}.achRow.claimed{opacity:.75}.achRow.special{border-color:#78d2f5}.achPrize{display:block;color:var(--gold);font-size:13px}
+.sellPick{display:grid;grid-template-columns:48px 1fr 48px;gap:10px;align-items:center}.sellPick input{width:100%;accent-color:var(--gold)}.sellPick button{min-height:44px;padding:0;font-size:22px}
 #cdList button{display:flex;align-items:center;justify-content:center;gap:8px}
 .toast{z-index:30;position:fixed;left:16px;right:16px;bottom:24px;max-width:448px;margin:auto;background:#000c;border:2px solid var(--gold);padding:10px;text-align:center;font-weight:bold;pointer-events:none;opacity:0;transition:opacity .2s}.toast.on{opacity:1}
 .side{display:contents}
@@ -164,7 +168,7 @@ button{min-height:58px;font-size:19px}
   </section>
 
   <section class="screen" id="s-home">
-    <div class="top"><span class="stat"><img class="ic" src="sprites/icons/star.png" alt="" data-i18n-alt="level"><span id="lvl"></span></span><span class="stat streak"><img class="ic" src="sprites/icons/bowl.png" alt="" data-i18n-alt="streak"><span id="streak"></span></span><button class="link" id="btnAccount" style="min-height:0;padding:0"></button><button class="link iconBtn" id="btnAdmin" hidden><img class="ic" src="sprites/icons/admin.png" alt="" data-i18n-alt="adminTitle"></button><button class="link iconBtn" id="btnFriends"><img class="ic" src="sprites/icons/friends.png" alt="" data-i18n-alt="friends"></button><button class="link iconBtn" data-settings><img class="ic" src="sprites/icons/gear.png" alt="" data-i18n-alt="settings"></button></div>
+    <div class="top"><span class="stat"><img class="ic" src="sprites/icons/star.png" alt="" data-i18n-alt="level"><span id="lvl"></span></span><span class="stat streak"><img class="ic" src="sprites/icons/bowl.png" alt="" data-i18n-alt="streak"><span id="streak"></span></span><button class="link" id="btnAccount" style="min-height:0;padding:0"></button><button class="link iconBtn" id="btnAdmin" hidden><img class="ic" src="sprites/icons/admin.png" alt="" data-i18n-alt="adminTitle"></button><button class="link iconBtn" id="btnAch"><img class="ic" src="sprites/icons/trophy.png" alt="" data-i18n-alt="achTitle"><i class="dot" id="achDot" hidden></i></button><button class="link iconBtn" id="btnFriends"><img class="ic" src="sprites/icons/friends.png" alt="" data-i18n-alt="friends"></button><button class="link iconBtn" data-settings><img class="ic" src="sprites/icons/gear.png" alt="" data-i18n-alt="settings"></button></div>
     <div class="xp"><i id="xpFill"></i></div>
     <div class="stage"><div class="say" id="say"></div><div class="sprite" id="pet"></div><button class="link" id="cdPlayer"><img src="sprites/cd_player.png" alt="" data-i18n-alt="cdPlayer"></button></div>
     <div class="side">
@@ -200,6 +204,13 @@ button{min-height:58px;font-size:19px}
     <p class="center pokenBal"><img class="ic" src="sprites/icons/poken.png" alt=""><b id="pokenBal"></b></p>
     <div class="row"><button id="tabSell" data-i18n="shopSell"></button><button id="tabCds" data-i18n="shopCds"></button><button id="tabSkins" data-i18n="shopSkins"></button></div>
     <div class="menuList" id="shopList"></div>
+    <button data-home data-i18n="back"></button>
+  </section>
+
+  <section class="screen" id="s-ach">
+    <h2 data-i18n="achTitle"></h2>
+    <p class="center dim" id="achCount"></p>
+    <div class="menuList" id="achList"></div>
     <button data-home data-i18n="back"></button>
   </section>
 
@@ -315,6 +326,13 @@ button{min-height:58px;font-size:19px}
   <h2 data-i18n="duelAskTitle"></h2>
   <p id="duelAskText"></p>
   <div class="row2"><button id="btnDuelDecline" data-i18n="giftDecline"></button><button class="main" id="btnDuelAccept" data-i18n="giftAccept"></button></div>
+</div></div>
+<div class="modal" id="sellWin"><div class="panel center">
+  <img class="giftAskPic" id="sellPic" src="" alt="">
+  <h2 id="sellName"></h2>
+  <div class="sellPick"><button id="btnSellMinus">−</button><input type="range" id="sellRange" min="1" max="1" value="1"><button id="btnSellPlus">+</button></div>
+  <p id="sellCount"></p>
+  <div class="row2"><button id="btnSellCancel" data-i18n="cancel"></button><button class="main" id="btnSellGo" data-i18n="sell"></button></div>
 </div></div>
 <div class="modal" id="daily"><div class="panel">
   <h2 data-i18n="dailyTitle"></h2>

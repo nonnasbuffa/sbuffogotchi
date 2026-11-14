@@ -3,4 +3,5 @@
 const CDS = [
   { id: 'chiamata_sbuffa', title: 'Chiamata Sbuffa', file: 'songs/chiamata_sbuffa.mp3', price: 2500, hue: 0 },
   { id: 'sbuff_n_base', title: 'Sbuff n Base', file: 'songs/sbuff_n_base.mp3', price: 5000, hue: 160 },
+  { id: 'ultimo_sbuffo', title: 'Ultimo Sbuffo...', file: 'songs/ultimo_sbuffo.mp3', price: 7500, hue: 260 },
 ];
