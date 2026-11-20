@@ -235,6 +235,42 @@ html:not(.modern) .termOut .ok{color:var(--green)}html:not(.modern) .termOut .er
 html:not(.modern) .termLine input{caret-color:var(--gold)}
 .termOut{scrollbar-color:#55486f transparent}html.modern .termOut{scrollbar-color:rgba(245,163,199,.4) transparent}
 @media (max-width:600px){.termWin{font-size:12px}.tlogo{font-size:9px}.tfetch{gap:10px}}
+.sprite.is3d{background-image:none!important;position:relative}
+.pet3d{position:absolute;inset:0;width:100%;height:100%;image-rendering:auto}
+.stage.has3dRoom{background:#e9dcc4}.room3d{position:absolute;inset:0;width:100%;height:100%;z-index:0}.stage.has3dRoom>#pet{z-index:1}.stage.has3dRoom>.say{z-index:2}.stage.has3dRoom #cdPlayer img{opacity:0}.stage.has3dRoom #cdPlayer{width:22%;height:24%}
+/* ----- settings ----- */
+.setList{display:flex;flex-direction:column;gap:14px;width:100%;max-width:520px;margin:0 auto 14px}
+.setCard{background:var(--panel);border:3px solid var(--line);padding:10px 14px 6px;display:flex;flex-direction:column;text-align:left}
+.setCard h3{margin:0 0 6px;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold)}
+.setRow{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:50px;padding:6px 0;border-top:2px solid var(--line)}
+.setCard>h3+.setRow,.setBranch>.setRow:first-child{border-top:0}
+.setLabel{display:flex;flex-direction:column;font-weight:bold}
+.setRow.stack{flex-direction:column;align-items:stretch;gap:8px;padding:10px 0}.setRow.stack>.seg.wide{margin:0}
+.setWarn{color:var(--red);font-weight:normal;font-size:12px}
+.setRow.go{cursor:pointer}.setGo{font-size:26px;line-height:1;color:var(--dim);padding-right:4px}
+.seg{display:flex;border:3px solid var(--line);background:var(--bg);flex-shrink:0}
+.seg.wide{margin-bottom:8px}.seg.wide>button{flex:1}
+.seg>button{min-height:36px;padding:4px 12px;border:0;background:none;color:var(--dim);font-size:15px}
+.seg>button.on{background:var(--gold);color:#231d33}
+.switch{width:58px;height:32px;min-height:0;padding:0;border:3px solid var(--line);background:var(--bg);position:relative;flex-shrink:0}
+.switch i{position:absolute;top:3px;left:3px;width:20px;height:20px;background:var(--dim);transition:left .15s}
+.switch.on{background:var(--green)}.switch.on i{left:29px;background:#fff}
+/* The Modern-only choices hang off "Look" on a single branch: ├ for each row, └ for the last. */
+.setBranch{margin:0 0 6px 10px;padding-left:26px;position:relative}
+.setBranch>.setRow{position:relative}
+.setBranch>.setRow::before{content:"";position:absolute;left:-26px;top:-6px;width:18px;height:calc(50% + 6px);border-left:3px solid var(--gold);border-bottom:3px solid var(--gold)}
+.setBranch>.setRow:not(:last-child)::after{content:"";position:absolute;left:-26px;top:50%;bottom:-6px;border-left:3px solid var(--gold)}
+html.modern .setCard{border:2px solid transparent;border-radius:var(--r);background:linear-gradient(var(--win),var(--win)) padding-box,var(--edge) border-box;backdrop-filter:blur(14px);box-shadow:0 0 10px color-mix(in srgb,var(--glowc) 18%,transparent),0 8px 22px rgba(0,0,0,.35)}
+html.modern .setCard h3{color:var(--o1)}
+html.modern .setRow{border-top:1px solid rgba(255,255,255,.08)}
+html.modern .seg{border:1px solid rgba(255,255,255,.12);border-radius:999px;background:rgba(255,255,255,.06);padding:3px}
+html.modern .seg>button:not(.link):not(.hole):not(.pad){background:none;border:0;box-shadow:none;backdrop-filter:none;border-radius:999px;min-height:30px;padding:4px 12px;color:var(--dim)}
+html.modern .seg>button.on:not(.link):not(.hole):not(.pad){background:linear-gradient(135deg,var(--o1),var(--o2));color:#1a1424}
+html.modern .switch:not(.link):not(.hole):not(.pad){border-radius:999px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);box-shadow:none;backdrop-filter:none}
+html.modern .switch i{border-radius:50%;background:#cfc6dc;top:5px;left:5px}
+html.modern .switch.on:not(.link):not(.hole):not(.pad){background:linear-gradient(135deg,var(--o1),var(--o2))}html.modern .switch.on i{left:31px;background:#fff}
+html.modern .setBranch>.setRow::before{border-color:var(--o1);border-width:0 0 2px 2px;border-bottom-left-radius:8px}
+html.modern .setBranch>.setRow:not(:last-child)::after{border-left:2px solid var(--o1)}
 </style>
 <script>
 // The player's Modern colours (Settings → Colours), kept on this device.
@@ -325,8 +361,7 @@ try{if(localStorage.getItem('sbuffogotchi.look')==='modern'){document.documentEl
 
   <section class="screen" id="s-settings">
     <h2 data-i18n="settings"></h2>
-    <p class="center dim" data-i18n="language"></p>
-    <div class="menuList" id="langList"></div>
+    <div class="setList" id="setList"></div>
     <button id="btnSettingsBack" data-i18n="back"></button>
   </section>
 
@@ -477,6 +512,8 @@ try{if(localStorage.getItem('sbuffogotchi.look')==='modern'){document.documentEl
 <script src="notify.js"></script>
 <script src="cloud.js"></script>
 <script src="cds.js"></script>
+<script src="three.min.js"></script>
+<script src="pet3d.js"></script>
 <script src="game.js"></script>
 </body>
 </html>

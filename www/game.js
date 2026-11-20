@@ -173,6 +173,14 @@ const Game = (() => {
   function play(el, name, thenIdle) {
     clearTimeout(players.get(el));
     const times = ANIMS[name];
+    // Modern look: she's a 3D model instead of the pixel sprite.
+    if (window.Pet3D && use3d()) {
+      Pet3D.play(el, name, thenIdle, skinNow().id, thenIdle ? times.reduce((a, b) => a + b, 0) : 0);
+      if (el.id === 'pet') Pet3D.room(el.parentElement, el); // her real room behind her
+      return;
+    }
+    window.Pet3D?.remove(el);
+    if (el.id === 'pet') window.Pet3D?.removeRoom(el.parentElement);
     el.style.backgroundImage = `url(${skinNow().dir}/${name}_sheet.png)`;
     let i = 0;
     const step = () => {
@@ -184,6 +192,10 @@ const Game = (() => {
       players.set(el, setTimeout(step, times[i++]));
     };
     step();
+  }
+  // After the look changes: the pets on screen switch between the pixel sprite and the 3D model.
+  function redrawPets() {
+    for (const id of ['pet', 'trainPet', 'fightPet', 'deadPet']) if ($(id)?.offsetParent) play($(id), id === 'pet' ? restingAnim() : id === 'fightPet' ? 'battle' : id === 'deadPet' ? 'sad' : 'idle');
   }
   const restingAnim = () => (Math.min(S.food, S.energy, S.joy) < 25 ? 'sad' : 'idle');
 
@@ -716,76 +728,109 @@ const Game = (() => {
 
   // ----- settings -----
   let settingsReturn = 'home';
-  function renderSettings() {
-    const list = $('langList');
-    list.textContent = '';
-    for (const [code, name] of Object.entries(I18n.langs)) {
-      const b = document.createElement('button');
-      b.textContent = name;
-      if (code === I18n.current()) b.className = 'picked';
-      b.onclick = () => { I18n.set(code); renderSettings(); };
-      list.append(b);
+  // ----- settings -----
+  // Grouped like a phone's settings: cards with a heading, a label on the left and its control on the right.
+  const CHAR_KEY = 'sbuffogotchi.char';
+  const charStyle = () => { try { return localStorage.getItem(CHAR_KEY) === '2d' ? '2d' : '3d'; } catch { return '3d'; } };
+  // She's 3D only in the Modern look, and only if the player hasn't picked 2D there.
+  const use3d = () => document.documentElement.classList.contains('modern') && charStyle() === '3d';
+  function setLook(modern) {
+    document.documentElement.classList.toggle('modern', modern);
+    window.applyLookColors?.(modern ? lookColors() : null);
+    try { localStorage.setItem('sbuffogotchi.look', modern ? 'modern' : 'classic'); } catch { /* lasts until the app closes */ }
+    redrawPets();
+  }
+  function setCharStyle(style) {
+    try { localStorage.setItem(CHAR_KEY, style); } catch { /* lasts until the app closes */ }
+    redrawPets();
+  }
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  function card(title) {
+    const c = el('div', 'setCard');
+    c.append(el('h3', '', title));
+    $('setList').append(c);
+    return c;
+  }
+  function row(parent, label, control) {
+    const r = el('div', 'setRow');
+    r.append(el('span', 'setLabel', label));
+    if (control) r.append(control);
+    parent.append(r);
+    return r;
+  }
+  // A segmented picker: one of a few choices.
+  function seg(choices, current, pick) {
+    const s = el('div', 'seg');
+    for (const [value, label] of choices) {
+      const btn = el('button', value === current ? 'on' : '', label);
+      btn.onclick = () => { pick(value); renderSettings(); };
+      s.append(btn);
     }
-    const music = document.createElement('button');
-    music.textContent = `${t('music')}: ${t(Music.enabled() ? 'musicOn' : 'musicOff')}`;
-    if (Music.enabled()) music.className = 'picked';
-    music.style.marginTop = '12px';
-    music.onclick = () => { Music.setEnabled(!Music.enabled()); renderSettings(); };
-    list.append(music);
+    return s;
+  }
+  // An on/off switch.
+  function toggle(on, flip) {
+    const s = el('button', on ? 'switch on' : 'switch');
+    s.setAttribute('role', 'switch');
+    s.setAttribute('aria-checked', on ? 'true' : 'false');
+    s.append(el('i'));
+    s.onclick = flip;
+    return s;
+  }
+  // A row that opens something, with an arrow on the right.
+  function goRow(parent, label, open) {
+    const r = row(parent, label, el('span', 'setGo', '›'));
+    r.classList.add('go');
+    r.tabIndex = 0;
+    r.setAttribute('role', 'button');
+    r.onclick = open;
+    r.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
+    return r;
+  }
+  function renderSettings() {
+    $('setList').replaceChildren();
+    // Language
+    const lang = card(t('language'));
+    const langSeg = seg(Object.entries(I18n.langs), I18n.current(), (code) => I18n.set(code));
+    langSeg.classList.add('wide');
+    lang.append(langSeg);
+    // Sound and reminders
+    const sound = card(t('setSound'));
+    row(sound, `🎵 ${t('music')}`, toggle(Music.enabled(), () => { Music.setEnabled(!Music.enabled()); renderSettings(); }));
     if (Notify.available()) {
-      const note = document.createElement('button');
-      note.textContent = `${t('notifications')}: ${t(Notify.enabled() ? 'musicOn' : 'musicOff')}`;
-      if (Notify.enabled()) note.className = 'picked';
-      note.onclick = async () => {
-        if (Notify.enabled() && note.dataset.blocked) {
+      const sw = toggle(Notify.enabled(), async () => {
+        if (Notify.enabled() && sw.dataset.blocked) {
           if (!(await Notify.ask())) toast(t('notifBlockedHelp'));
         } else await Notify.setEnabled(!Notify.enabled());
         planReminders();
         renderSettings();
-      };
+      });
+      const r = row(sound, `🔔 ${t('notifications')}`, sw);
       // If the phone said no, say so: tapping asks again, or explains where to allow them.
       Notify.allowed().then((ok) => {
         if (ok || !Notify.enabled()) return;
-        note.dataset.blocked = '1';
-        note.className = '';
-        note.textContent = `${t('notifications')}: ${t('notifBlocked')}`;
+        sw.dataset.blocked = '1';
+        sw.classList.remove('on');
+        r.querySelector('.setLabel').append(el('small', 'setWarn', t('notifBlocked')));
       });
-      list.append(note);
     }
-    // Look: the classic pixel interface, or the modern rounded and glowing one. Saved on this device.
+    // Look. With Modern picked, a branch below it holds the Modern-only choices.
     const modern = document.documentElement.classList.contains('modern');
-    const look = document.createElement('button');
-    look.textContent = `${t('uiLook')}: ${t(modern ? 'uiModern' : 'uiClassic')}`;
-    if (modern) look.className = 'picked';
-    look.onclick = () => {
-      const on = !document.documentElement.classList.contains('modern');
-      document.documentElement.classList.toggle('modern', on);
-      window.applyLookColors?.(on ? lookColors() : null);
-      try { localStorage.setItem('sbuffogotchi.look', on ? 'modern' : 'classic'); } catch { /* lasts until the app closes */ }
-      renderSettings();
-    };
-    list.append(look);
-    const termBtn = document.createElement('button');
-    termBtn.textContent = `💻 ${t('terminal')}`;
-    termBtn.onclick = () => openTerminal();
-    list.append(termBtn);
+    const looks = card(t('setLook'));
+    row(looks, `✨ ${t('uiLook')}`, seg([['classic', t('uiClassic')], ['modern', t('uiModern')]], modern ? 'modern' : 'classic', (v) => setLook(v === 'modern')));
     if (modern) {
-      const colors = document.createElement('button');
-      colors.textContent = `🎨 ${t('colorsTitle')}`;
-      colors.onclick = openColors;
-      list.append(colors);
+      const branch = el('div', 'setBranch');
+      looks.append(branch);
+      row(branch, t('uiChar'), seg([['2d', '2D'], ['3d', '3D']], charStyle(), setCharStyle));
+      goRow(branch, `🎨 ${t('colorsTitle')}`, openColors);
     }
-    const gifts = document.createElement('button');
-    gifts.textContent = `${t('giftSetting')}: ${t({ ask: 'giftModeAsk', auto: 'giftModeAuto', off: 'giftModeOff' }[giftMode()])}`;
-    gifts.onclick = () => {
-      S.giftMode = { ask: 'auto', auto: 'off', off: 'ask' }[giftMode()];
-      save(); sync(); renderSettings();
-    };
-    list.append(gifts);
-    const tut = document.createElement('button');
-    tut.textContent = t('tutReplay');
-    tut.onclick = startTutorial;
-    list.append(tut);
+    // Game
+    const game = card(t('setGame'));
+    const giftSeg = seg([['ask', t('giftModeAsk')], ['auto', t('giftModeAuto')], ['off', t('giftModeOff')]], giftMode(), (v) => { S.giftMode = v; save(); sync(); });
+    giftSeg.classList.add('wide');
+    row(game, `🎁 ${t('giftSetting')}`, giftSeg).classList.add('stack');
+    goRow(game, `📖 ${t('tutReplay')}`, startTutorial);
+    goRow(game, `💻 ${t('terminal')}`, openTerminal);
   }
 
   // ----- Modern colours -----
@@ -3178,7 +3223,7 @@ const Game = (() => {
   // A console like the ones in PC games: ` or F11 opens it (or the admin panel, on phones).
   // Anyone can look around, open screens and change colours; changing the game itself needs
   // sv_cheats 1, which anyone can type (if they know it). `js` runs any JavaScript at all.
-  const GAME_VERSION = '1.4.5';
+  const GAME_VERSION = '1.5.0';
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const svCheats = () => S.svCheats === true;
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
@@ -3412,7 +3457,7 @@ const Game = (() => {
     ['get.cds.<cd> = true|false', 'own a CD or not (also get.skins.<skin>, get.achievements.<id>)'],
     ['get.pet.name = "<text>"', 'rename her (text goes in quotes)'],
     ['color <btn|win|outline1|outline2|text|glow> <#hex>', 'change a Modern colour; color reset to undo'],
-    ['look modern|classic', 'switch the interface style'], ['name <text>', "rename her"], ['say <text>', 'make her say something'],
+    ['look modern|classic|2d|3d', 'switch the interface style, or her 2D / 3D look in Modern'], ['name <text>', "rename her"], ['say <text>', 'make her say something'],
     ['lang en|es|it', 'change language'], ['music on|off', 'music on or off'], ['play <cd> / stop', 'CD player'],
     ['give <item> [n]', 'add items (needs sv_cheats 1)'], ['fill', 'fill all her bars (needs sv_cheats 1)'],
     ['toast <text>', 'show a message'], ['golden', 'spawn a golden poke bowl (needs sv_cheats 1)'],
@@ -3469,11 +3514,10 @@ const Game = (() => {
       termPrint(`${k} = ${now[key]}`, 'ok');
     },
     look(rest) {
+      if (/^[23]d$/i.test(rest.trim())) { setCharStyle(rest.trim().toLowerCase()); return termPrint(`character = ${charStyle()}`, 'ok'); }
       const on = /modern/i.test(rest);
-      if (!/modern|classic/i.test(rest)) return termPrint('usage: look modern|classic', 'err');
-      document.documentElement.classList.toggle('modern', on);
-      window.applyLookColors?.(on ? lookColors() : null);
-      try { localStorage.setItem('sbuffogotchi.look', on ? 'modern' : 'classic'); } catch { /* this session only */ }
+      if (!/modern|classic/i.test(rest)) return termPrint('usage: look modern|classic|2d|3d', 'err');
+      setLook(on);
       termPrint(`look = ${on ? 'modern' : 'classic'}`, 'ok');
     },
     name(rest) { S.petName = rest.slice(0, PET_NAME_MAX); save(); sync(); render(); termPrint(`her name is now ${petName()}`, 'ok'); },
