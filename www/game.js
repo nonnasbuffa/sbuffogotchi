@@ -803,9 +803,11 @@ const Game = (() => {
       const pick = document.createElement('input');
       pick.type = 'color';
       pick.value = c[key] || COLOR_DEFAULTS[key];
-      // Button colour only counts when the buttons share one colour.
-      if (key === 'btn' && !c.btn) pick.disabled = true;
-      pick.oninput = () => { const now = lookColors(); now[key] = pick.value; setLookColors(now); };
+      // Picking a button colour gives every button that colour (and switches off the per-button colours).
+      pick.oninput = () => {
+        const now = lookColors(); now[key] = pick.value; setLookColors(now);
+        if (key === 'btn' && !c.btn) { c.btn = pick.value; tints.textContent = `${t('colorTints')}: ${t('musicOff')}`; tints.className = ''; }
+      };
       row.append(name, pick);
       list.append(row);
     }
