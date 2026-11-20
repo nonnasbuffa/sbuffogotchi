@@ -423,6 +423,13 @@ window.Pet3D = (() => {
       arms.forEach((a, i) => { a.rotation.z = 0.08 * (i ? 1 : -1); a.rotation.x = 0.15; });
       torsoGroup.scale.set(1.02, 0.97, 1.02);
       browTilt = -0.35;
+    } else if (mood === 'walk') {
+      // A waddling walk: legs and arms swing, the body rocks side to side.
+      const w = t * 9;
+      legs.forEach((l, i) => { l.rotation.x = Math.sin(w + i * Math.PI) * 0.55; });
+      arms.forEach((a, i) => { a.rotation.x = Math.sin(w + i * Math.PI + Math.PI) * 0.5; });
+      body.position.y = Math.abs(Math.sin(w)) * 0.04;
+      body.rotation.z = Math.sin(w) * 0.06;
     } else if (mood === 'battle') {
       // Guard up, bouncing on her toes, jabbing now and then.
       root.rotation.y = -0.3;
@@ -441,7 +448,8 @@ window.Pet3D = (() => {
     }
     // Face: brows, the right mouth, eyes, and a blink now and then.
     m.brows.forEach((br, i) => { const s = i ? 1 : -1; br.rotation.z = Math.PI / 2 + browTilt * s; br.position.y = 0.19 + browY; });
-    for (const [k, mo] of Object.entries(m.mouths)) mo.visible = k === mood;
+    const face = m.mouths[mood] ? mood : 'idle';
+    for (const [k, mo] of Object.entries(m.mouths)) mo.visible = k === face;
     if (now > v.blinkAt + 130) v.blinkAt = now + 2200 + Math.random() * 2600;
     const blink = now >= v.blinkAt && now < v.blinkAt + 130;
     m.eyes.forEach((e) => { e.visible = mood !== 'happy'; e.scale.y = blink ? 0.12 : 1; });
@@ -687,5 +695,16 @@ window.Pet3D = (() => {
     views.delete(el);
     el.classList.remove('is3d');
   }
-  return { play, remove, room, removeRoom, has: (el) => views.has(el) };
+  // Her model for other 3D scenes (the minigames): call pose(anim) every frame.
+  function figure(lookId) {
+    const v = { model: build(lookId), anim: 'idle', after: null, started: performance.now(), ends: 0, blinkAt: 0 };
+    // An outer group the scene can move: pose() resets the model's own position every frame.
+    const holder = new T.Group();
+    holder.add(v.model.root);
+    return {
+      root: holder,
+      pose(anim) { if (anim !== v.anim) { v.anim = anim; v.started = performance.now(); } pose(v, performance.now()); },
+    };
+  }
+  return { play, remove, room, removeRoom, figure, has: (el) => views.has(el) };
 })();

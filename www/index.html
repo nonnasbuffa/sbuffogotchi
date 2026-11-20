@@ -237,6 +237,11 @@ html:not(.modern) .termLine input{caret-color:var(--gold)}
 @media (max-width:600px){.termWin{font-size:12px}.tlogo{font-size:9px}.tfetch{gap:10px}}
 .sprite.is3d{background-image:none!important;position:relative}
 .pet3d{position:absolute;inset:0;width:100%;height:100%;image-rendering:auto}
+#miniCanvas.is3d{image-rendering:auto}
+#whackGrid.is3d{position:relative}
+.whack3d{position:absolute;inset:0;width:100%;height:100%;z-index:0;border-radius:14px}
+#whackGrid.is3d .hole{position:relative;z-index:1;background:transparent!important;border-color:transparent!important;box-shadow:none!important;backdrop-filter:none!important}
+#whackGrid.is3d .hole img{opacity:0}
 .stage.has3dRoom{background:#e9dcc4}.room3d{position:absolute;inset:0;width:100%;height:100%;z-index:0}.stage.has3dRoom>#pet{z-index:1}.stage.has3dRoom>.say{z-index:2}.stage.has3dRoom #cdPlayer img{opacity:0}.stage.has3dRoom #cdPlayer{width:22%;height:24%}
 /* ----- settings ----- */
 .setList{display:flex;flex-direction:column;gap:14px;width:100%;max-width:520px;margin:0 auto 14px}
@@ -514,6 +519,7 @@ try{if(localStorage.getItem('sbuffogotchi.look')==='modern'){document.documentEl
 <script src="cds.js"></script>
 <script src="three.min.js"></script>
 <script src="pet3d.js"></script>
+<script src="games3d.js"></script>
 <script src="game.js"></script>
 </body>
 </html>

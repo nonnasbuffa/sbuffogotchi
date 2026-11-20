@@ -201,6 +201,7 @@ const Game = (() => {
 
   // ----- screens -----
   function show(name) {
+    if (name !== 'whack') window.Games3D?.whack.stop();
     document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('on', s.id === `s-${name}`));
     Music.play({ train: 'action', whack: 'action', order: 'action', mini: 'action', boss: 'boss' }[name] || 'home');
     if (name === 'home') { render(); play($('pet'), restingAnim()); setTimeout(showNextGift, 300); }
@@ -1072,8 +1073,9 @@ const Game = (() => {
       hole.onpointerdown = (e) => { e.preventDefault(); whackTap(i); };
       grid.append(hole);
     }
-    whack = { pops: 0, veggies: 0, hits: 0, cell: -1, bowl: false, timer: null };
+    whack = { pops: 0, veggies: 0, hits: 0, cell: -1, bowl: false, art: 'broccoli', timer: null };
     show('whack'); whackInfo();
+    if (window.Games3D && use3d()) Games3D.whack.start(grid, () => (whack && whack.cell >= 0 ? { cell: whack.cell, kind: whack.bowl ? 'bowl' : whack.art } : null));
     whack.timer = setTimeout(whackPop, 500);
   }
   function whackInfo(note) {
@@ -1092,7 +1094,8 @@ const Game = (() => {
     if (!whack.bowl) whack.veggies += 1;
     const img = document.createElement('img');
     img.alt = '';
-    img.src = whack.bowl ? 'sprites/icons/bowl.png' : `sprites/boss_${BOSSES[Math.floor(Math.random() * BOSSES.length)].art}.png`;
+    whack.art = BOSSES[Math.floor(Math.random() * BOSSES.length)].art;
+    img.src = whack.bowl ? 'sprites/icons/bowl.png' : `sprites/boss_${whack.art}.png`;
     $('whackGrid').children[cell].append(img);
     whack.timer = setTimeout(() => {
       whackClear();
@@ -1187,6 +1190,8 @@ const Game = (() => {
     walker: art('sprites/walker.png'), carrot: art('sprites/boss_carrot.png'), sprout: art('sprites/boss_sprout.png'),
   };
   let mini = null;
+  let MINI_SCALE = 1;
+  const drawMini = (g, c) => (g.is3d ? g.draw3d(g, c) : g.draw(g, c));
   // extra.duel is set for a live game against a friend: it's free and starts with a countdown.
   function startMini(title, game, extra = {}) {
     tick();
@@ -1197,10 +1202,15 @@ const Game = (() => {
     $('btnJump').textContent = t(game.padBtn || 'jumpBtn');
     document.querySelector('#padControls .keysHint').textContent = t(game.keysHint || 'keysHint');
     MINI_W = fitMiniWidth(game, extra);
-    $('miniCanvas').width = MINI_W;
+    // In 3D the canvas is drawn at twice the size so the 3D scene stays sharp; the game still thinks in its own pixels.
+    const is3d = !!(game.draw3d && window.Games3D && use3d());
+    MINI_SCALE = is3d ? 2 : 1;
+    $('miniCanvas').width = MINI_W * MINI_SCALE;
+    $('miniCanvas').height = MINI_H * MINI_SCALE;
+    $('miniCanvas').classList.toggle('is3d', is3d);
     $('miniCanvas').style.aspectRatio = `${MINI_W} / ${MINI_H}`;
     $('s-mini').classList.toggle('wide', MINI_W > BASE_W);
-    mini = { ...game, tired, pointerX: MINI_W / 2, raf: 0, last: performance.now(), ...extra };
+    mini = { ...game, tired, is3d, pointerX: MINI_W / 2, raf: 0, last: performance.now(), ...extra };
     if (extra.duel) mini.countdown = 3;
     $('s-mini').classList.toggle('pad', !!game.pad);
     mini.begin(mini);
@@ -1219,11 +1229,12 @@ const Game = (() => {
     const dt = Math.min(0.05, (t - mini.last) / 1000);
     mini.last = t;
     const c = $('miniCanvas').getContext('2d');
+    c.setTransform(MINI_SCALE, 0, 0, MINI_SCALE, 0, 0);
     c.imageSmoothingEnabled = false;
     // 3, 2, 1, GO! before races and friendly battles.
     if (mini.countdown > 0) {
       mini.countdown -= dt;
-      mini.draw(mini, c);
+      drawMini(mini, c);
       const n = Math.ceil(mini.countdown);
       c.fillStyle = '#231d3388'; c.fillRect(0, 0, MINI_W, MINI_H);
       c.font = 'bold 64px "Courier New", monospace'; c.textAlign = 'center'; c.fillStyle = '#ffc857';
@@ -1234,7 +1245,7 @@ const Game = (() => {
     }
     mini.update(mini, dt);
     if (!mini) return;
-    mini.draw(mini, c);
+    drawMini(mini, c);
     mini.raf = requestAnimationFrame(miniLoop);
   }
   function stopMini() {
@@ -1364,6 +1375,7 @@ const Game = (() => {
         pongServe(g, !youScored);
       }
     },
+    draw3d(g, c) { Games3D.frame('pong', g, c, MINI_W, MINI_H); },
     draw(g, c) {
       c.fillStyle = '#2f6b58'; c.fillRect(0, 0, MINI_W, MINI_H);
       c.fillStyle = '#f6eedd';
@@ -1411,6 +1423,7 @@ const Game = (() => {
       this.info(g);
       if (g.time <= 0 || g.lives <= 0) this.end(g);
     },
+    draw3d(g, c) { Games3D.frame('catch', g, c, MINI_W, MINI_H); },
     draw(g, c) {
       c.fillStyle = '#efe6d4'; c.fillRect(0, 0, MINI_W, MINI_H);
       c.fillStyle = '#c9a77f'; c.fillRect(0, MINI_H - 30, MINI_W, 30);
@@ -1588,6 +1601,13 @@ const Game = (() => {
         c.restore();
       }
       c.restore();
+      this.drawBox(g, c);
+    },
+    draw3d(g, c) {
+      Games3D.frame('parkour', g, c, MINI_W, MINI_H, { map: PARKOUR_MAP, tile: TILE, look: skinNow().id, spikesUp });
+      this.drawBox(g, c);
+    },
+    drawBox(g, c) {
       if (g.box) {
         c.fillStyle = '#000'; c.fillRect(10, MINI_H - 110, MINI_W - 20, 100);
         c.strokeStyle = '#f6eedd'; c.lineWidth = 4; c.strokeRect(12, MINI_H - 108, MINI_W - 24, 96);
@@ -1728,6 +1748,16 @@ const Game = (() => {
         const cx = i * laneW() + laneW() / 2;
         const lift = g.bump[i] ? 6 : 0;
         c.drawImage(ART.bowl, 0, 0, 20, 14, cx - 32, RHYTHM_HIT_Y - 18 - lift, 64, 45);
+      }
+      this.hud(g, c);
+    },
+    draw3d(g, c) {
+      Games3D.frame('rhythm', g, c, MINI_W, MINI_H, { hitY: RHYTHM_HIT_Y });
+      this.hud(g, c);
+    },
+    hud(g, c) {
+      for (let i = 0; i < RHYTHM_LANES; i++) {
+        const cx = i * laneW() + laneW() / 2;
         if (usesKeyboard()) {
           c.fillStyle = '#b9aec9'; c.font = 'bold 13px "Courier New", monospace'; c.textAlign = 'center';
           c.fillText(RHYTHM_LABELS[i], cx, MINI_H - 10);
@@ -3223,7 +3253,7 @@ const Game = (() => {
   // A console like the ones in PC games: ` or F11 opens it (or the admin panel, on phones).
   // Anyone can look around, open screens and change colours; changing the game itself needs
   // sv_cheats 1, which anyone can type (if they know it). `js` runs any JavaScript at all.
-  const GAME_VERSION = '1.5.0';
+  const GAME_VERSION = '1.6.0';
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const svCheats = () => S.svCheats === true;
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
@@ -3238,7 +3268,7 @@ const Game = (() => {
   function openTerminal() {
     term.open = true;
     $('termWin').classList.add('on');
-    if (!$('termOut').childElementCount) { fetchLogo(); termPrint("Type 'help' to see what you can do. Tab completes, ↑ ↓ go through history.", 'dim'); }
+    if (!$('termOut').childElementCount) { fetchLogo(); termPrint(t('tm_welcome'), 'dim'); }
     setTimeout(() => $('termIn').focus(), 30);
   }
   function closeTerminal() {
@@ -3272,7 +3302,7 @@ const Game = (() => {
   }
   function needCheats() {
     if (svCheats()) return false;
-    termPrint("sv_cheats is 0: this changes the game. Type 'sv_cheats 1' first.", 'err');
+    termPrint(t('tm_needCheats'), 'err');
     return true;
   }
   function changed() { tick(); S.tickAt = Date.now(); save(); sync(); render(); if ($('s-shop').classList.contains('on')) renderShop(); }
@@ -3284,16 +3314,16 @@ const Game = (() => {
   function typedValue(raw, kind, path) {
     const v = raw.trim();
     if (kind === 'number') {
-      if (!/^[+-]?\d+(\.\d+)?(e\d+)?$/i.test(v)) { termPrint(`SyntaxError: ${path} is a number, '${v}' is not`, 'err'); return undefined; }
+      if (!/^[+-]?\d+(\.\d+)?(e\d+)?$/i.test(v)) { termPrint(t('tm_isNumber', { path, v }), 'err'); return undefined; }
       return Number(v);
     }
     if (kind === 'boolean') {
-      if (v !== 'true' && v !== 'false') { termPrint(`SyntaxError: ${path} is true or false, '${v}' is not`, 'err'); return undefined; }
+      if (v !== 'true' && v !== 'false') { termPrint(t('tm_isBool', { path, v }), 'err'); return undefined; }
       return v === 'true';
     }
     if (kind === 'string') {
       const m = v.match(/^"(.*)"$|^'(.*)'$/);
-      if (!m) { termPrint(`SyntaxError: ${path} is text, write it in quotes: "${v}"`, 'err'); return undefined; }
+      if (!m) { termPrint(t('tm_isText', { path, v }), 'err'); return undefined; }
       return m[1] ?? m[2];
     }
     return undefined;
@@ -3334,10 +3364,10 @@ const Game = (() => {
   function assign(left, op, raw) {
     const path = left.trim();
     if ((/^color[_.-](\w+)$/i).test(path)) return runCommand(`color ${path.split(/[_.-]/)[1]} ${raw}`);
-    if (!path.startsWith('get.')) return termPrint(`${path}: command not found  (values are changed with get.<group>.<name>, see 'help')`, 'err');
+    if (!path.startsWith('get.')) return termPrint(t('tm_notGet', { path }), 'err');
     const slot = resolve(path);
-    if (!slot) return termPrint(`ReferenceError: ${path} does not exist  (try 'ls items', 'ls cds', 'ls skins', 'ls achievements')`, 'err');
-    if (op !== '=' && slot.kind !== 'number') return termPrint(`TypeError: ${op} only works on numbers`, 'err');
+    if (!slot) return termPrint(t('tm_noPath', { path }), 'err');
+    if (op !== '=' && slot.kind !== 'number') return termPrint(t('tm_onlyNumbers', { op }), 'err');
     const value = typedValue(raw, slot.kind, path);
     if (value === undefined) return;
     if (needCheats()) return;
@@ -3427,13 +3457,13 @@ const Game = (() => {
       const mins = Math.floor((Date.now() - term.started) / 60000);
       const info = [
         `<b class="tp">${who}</b>`, '-'.repeat(who.length),
-        ['OS', `SbuffOS ${GAME_VERSION} x86_64`], ['Host', `${esc(petName())} (level ${S.level})`],
-        ['Kernel', '6.9.0-uff-sbuffling'], ['Uptime', `${days} days, ${mins} mins`],
-        ['Packages', `${Object.values(S.items).reduce((a, b) => a + (b || 0), 0)} (bag), ${(S.cds || []).length} (cd)`],
+        ['OS', `SbuffOS ${GAME_VERSION} x86_64`], ['Host', `${esc(petName())} (${t('tm_level')} ${S.level})`],
+        ['Kernel', '6.9.0-uff-sbuffling'], ['Uptime', t('tm_uptime', { d: days, m: mins })],
+        ['Packages', `${Object.values(S.items).reduce((a, b) => a + (b || 0), 0)} (${t('tm_bag')}), ${(S.cds || []).length} (cd)`],
         ['Shell', 'sbsh 1.0'], ['Resolution', `${innerWidth}x${innerHeight}`],
         ['Theme', document.documentElement.classList.contains('modern') ? 'Modern [glass]' : 'Classic [pixel]'],
-        ['Skin', esc(t(skinNow().key))], ['CPU', `Poke Bowl Core (${S.str}) @ ${S.streak}-day streak`],
-        ['GPU', `Rice Rendering ${esc(realGpu())}`], ['Memory', `food ${Math.round(S.food)}% · energy ${Math.round(S.energy)}% · joy ${Math.round(S.joy)}%`],
+        ['Skin', esc(t(skinNow().key))], ['CPU', `Poke Bowl Core (${S.str}) @ ${t('tm_streak', { n: S.streak })}`],
+        ['GPU', `Rice Rendering ${esc(realGpu())}`], ['Memory', t('tm_memory', { f: Math.round(S.food), e: Math.round(S.energy), j: Math.round(S.joy) })],
         ['Poken', (S.poken || 0).toLocaleString()], ['sv_cheats', svCheats() ? '1' : '0'],
       ].map((r) => (Array.isArray(r) ? `<span class="tp">${r[0]}</span>: ${r[1]}` : r));
       const blocks = ['#231d33', '#e8604c', '#5fcf80', '#ffc857', '#62b6e8', '#c46ad8', '#5fcfb8', '#f6eedd']
@@ -3448,27 +3478,28 @@ const Game = (() => {
   }
 
   // --- commands ---
+  // The commands (left) stay in English; their descriptions (grey) follow the game's language.
   const HELP = [
-    ['help', 'this list'], ['ui', 'open the admin panel (if you have the key)'], ['sbuffofetch / neofetch', 'system info, with her head as the logo'],
-    ['open <screen>', `open a screen or window: ${Object.keys(OPENERS).join(', ')}`], ['close', 'close this terminal (or press ` / F11)'],
-    ['ls [state|items|cds|skins|achievements|screens]', 'list things'], ['get <path> / <path>', 'show a value, e.g. poken, items.diamond'],
-    ['get.items.<item> = <number>', 'set an item, e.g. get.items.poken = 99999, get.items.pizza += 5 (needs sv_cheats 1)'],
-    ['get.stats.<food|energy|joy|level|xp|str|streak|bossWins> = <number>', 'set a stat'],
-    ['get.cds.<cd> = true|false', 'own a CD or not (also get.skins.<skin>, get.achievements.<id>)'],
-    ['get.pet.name = "<text>"', 'rename her (text goes in quotes)'],
-    ['color <btn|win|outline1|outline2|text|glow> <#hex>', 'change a Modern colour; color reset to undo'],
-    ['look modern|classic|2d|3d', 'switch the interface style, or her 2D / 3D look in Modern'], ['name <text>', "rename her"], ['say <text>', 'make her say something'],
-    ['lang en|es|it', 'change language'], ['music on|off', 'music on or off'], ['play <cd> / stop', 'CD player'],
-    ['give <item> [n]', 'add items (needs sv_cheats 1)'], ['fill', 'fill all her bars (needs sv_cheats 1)'],
-    ['toast <text>', 'show a message'], ['golden', 'spawn a golden poke bowl (needs sv_cheats 1)'],
-    ['sv_cheats 0|1', 'cheats off or on'],
-    ['cat save', 'print the whole save'], ['js <code>', 'run any JavaScript: S is her save, Game is the game'],
-    ['history, clear, echo, date, whoami, uname -a, reboot', 'the usual'],
+    ['help', 'h_help'], ['ui', 'h_ui'], ['sbuffofetch / neofetch', 'h_fetch'],
+    ['open <screen>', 'h_open'], ['close', 'h_close'],
+    ['ls [state|items|cds|skins|achievements|screens]', 'h_ls'], ['get <path> / <path>', 'h_get'],
+    ['get.items.<item> = <number>', 'h_items'],
+    ['get.stats.<food|energy|joy|level|xp|str|streak|bossWins> = <number>', 'h_stats'],
+    ['get.cds.<cd> = true|false', 'h_cds'],
+    ['get.pet.name = "<text>"', 'h_petName'],
+    ['color <btn|win|outline1|outline2|text|glow> <#hex>', 'h_color'],
+    ['look modern|classic|2d|3d', 'h_look'], ['name <text>', 'h_rename'], ['say <text>', 'h_say'],
+    ['lang en|es|it', 'h_lang'], ['music on|off', 'h_music'], ['play <cd> / stop', 'h_play'],
+    ['give <item> [n]', 'h_give'], ['fill', 'h_fill'],
+    ['toast <text>', 'h_toast'], ['golden', 'h_golden'],
+    ['sv_cheats 0|1', 'h_sv'],
+    ['cat save', 'h_cat'], ['js <code>', 'h_js'],
+    ['history, clear, echo, date, whoami, uname -a, reboot', 'h_usual'],
   ];
   const COMMANDS = {
-    help() { for (const [c, d] of HELP) termHtml(`<span class="tp">${esc(c)}</span>  <span class="dim">${esc(d)}</span>`); },
+    help() { for (const [c, d] of HELP) termHtml(`<span class="tp">${esc(c)}</span>  <span class="dim">${esc(t(d, { list: Object.keys(OPENERS).join(', ') }))}</span>`); },
     ui() {
-      if (!S.cheats?.unlocked) return termPrint('leave this to the experts...', 'err');
+      if (!S.cheats?.unlocked) return termPrint(t('tm_experts'), 'err');
       closeTerminal(); openAdmin();
     },
     sbuffofetch: () => fetchLogo(), neofetch: () => fetchLogo(), fastfetch: () => fetchLogo(),
@@ -3480,15 +3511,15 @@ const Game = (() => {
     uname: () => termPrint(`SbuffOS sbuffogotchi 6.9.0-uff-sbuffling #1 SMP PREEMPT_DYNAMIC ${GAME_VERSION} x86_64 GNU/Sbuffling`),
     history: () => term.history.forEach((h, i) => termPrint(`${String(i + 1).padStart(4)}  ${h}`)),
     reboot: () => location.reload(),
-    sudo: (rest) => (rest ? runCommand(rest) : termPrint('usage: sudo <command>  (you are already root here)')),
-    rm: (rest) => termPrint(/-rf|\//.test(rest) ? "nice try. she's staying." : 'rm: nothing to remove', 'err'),
+    sudo: (rest) => (rest ? runCommand(rest) : termPrint(t('tm_sudo'))),
+    rm: (rest) => termPrint(t(/-rf|\//.test(rest) ? 'tm_rmNice' : 'tm_rmNothing'), 'err'),
     pwd: () => termPrint(`/home/${(Cloud.user()?.name || 'guest').toLowerCase()}/${document.querySelector('.screen.on')?.id.replace('s-', '') || 'home'}`),
-    cd: (rest) => (OPENERS[rest.replace(/^\/|\/$/g, '')] ? (OPENERS[rest.replace(/^\/|\/$/g, '')](), termPrint(`→ ${rest}`)) : termPrint(`cd: ${rest}: no such screen ('ls screens')`, 'err')),
+    cd: (rest) => (OPENERS[rest.replace(/^\/|\/$/g, '')] ? (OPENERS[rest.replace(/^\/|\/$/g, '')](), termPrint(`→ ${rest}`)) : termPrint(t('tm_noScreen', { x: rest }), 'err')),
     open(rest) {
       const key = rest.toLowerCase().replace(/[\s_-]/g, '');
-      if (!OPENERS[key]) return termPrint(`open: ${rest}: unknown. Try: ${Object.keys(OPENERS).join(', ')}`, 'err');
+      if (!OPENERS[key]) return termPrint(t('tm_openUnknown', { x: rest, list: Object.keys(OPENERS).join(', ') }), 'err');
       OPENERS[key]();
-      termPrint(`opened ${key}`, 'ok');
+      termPrint(t('tm_opened', { x: key }), 'ok');
     },
     ls(rest) {
       const what = rest || 'state';
@@ -3499,16 +3530,16 @@ const Game = (() => {
       if (what.startsWith('ach')) return ACHIEVEMENTS.forEach((a) => termPrint(`${(S.achieved || {})[a.id] ? '●' : '○'} ${a.id.padEnd(10)} ${t(`ach_${a.id}`)}`));
       const obj = what === 'state' ? S : getPath(what);
       if (obj && typeof obj === 'object') return Object.keys(obj).forEach((k) => termPrint(`${k.padEnd(14)} ${typeof obj[k] === 'object' ? (Array.isArray(obj[k]) ? `[${obj[k].length}]` : '{…}') : JSON.stringify(obj[k])}`));
-      termPrint(`ls: ${what}: nothing there`, 'err');
+      termPrint(t('tm_lsNothing', { x: what }), 'err');
     },
     get(rest) { const v = getPath(rest.replace(/^S\./, '')); termPrint(v === undefined ? `${rest}: undefined` : JSON.stringify(v, null, 2)); },
-    cat(rest) { if (/save/.test(rest)) termPrint(JSON.stringify(S, null, 2)); else termPrint(`cat: ${rest}: try 'cat save'`, 'err'); },
-    set(rest) { const m = rest.match(/^(\S+)\s+(.*)$/); if (!m) return termPrint('usage: set <path> <value>', 'err'); assign(m[1], '=', m[2]); },
+    cat(rest) { if (/save/.test(rest)) termPrint(JSON.stringify(S, null, 2)); else termPrint(t('tm_catTry', { x: rest }), 'err'); },
+    set(rest) { const m = rest.match(/^(\S+)\s+(.*)$/); if (!m) return termPrint(t('tm_usage', { x: 'set <path> <value>' }), 'err'); assign(m[1], '=', m[2]); },
     color(rest) {
       const [k, hex] = rest.split(/\s+/);
-      if (k === 'reset') { setLookColors({}); return termPrint('colours reset', 'ok'); }
+      if (k === 'reset') { setLookColors({}); return termPrint(t('tm_colorsReset'), 'ok'); }
       const key = COLOR_NAMES[(k || '').toLowerCase()];
-      if (!key || !/^#?[0-9a-f]{6}$/i.test(hex || '')) return termPrint('usage: color <btn|win|outline1|outline2|text|glow> <#rrggbb>  or  color reset', 'err');
+      if (!key || !/^#?[0-9a-f]{6}$/i.test(hex || '')) return termPrint(t('tm_usage', { x: 'color <btn|win|outline1|outline2|text|glow> <#rrggbb>  /  color reset' }), 'err');
       if (!document.documentElement.classList.contains('modern')) runCommand('look modern');
       const now = lookColors(); now[key] = hex.startsWith('#') ? hex : `#${hex}`; setLookColors(now);
       termPrint(`${k} = ${now[key]}`, 'ok');
@@ -3516,30 +3547,30 @@ const Game = (() => {
     look(rest) {
       if (/^[23]d$/i.test(rest.trim())) { setCharStyle(rest.trim().toLowerCase()); return termPrint(`character = ${charStyle()}`, 'ok'); }
       const on = /modern/i.test(rest);
-      if (!/modern|classic/i.test(rest)) return termPrint('usage: look modern|classic|2d|3d', 'err');
+      if (!/modern|classic/i.test(rest)) return termPrint(t('tm_usage', { x: 'look modern|classic|2d|3d' }), 'err');
       setLook(on);
       termPrint(`look = ${on ? 'modern' : 'classic'}`, 'ok');
     },
-    name(rest) { S.petName = rest.slice(0, PET_NAME_MAX); save(); sync(); render(); termPrint(`her name is now ${petName()}`, 'ok'); },
-    say(rest) { sighText = rest; sighUntil = Date.now() + 6000; show('home'); render(); termPrint(`she says: ${rest}`, 'ok'); },
+    name(rest) { S.petName = rest.slice(0, PET_NAME_MAX); save(); sync(); render(); termPrint(t('tm_nameNow', { name: petName() }), 'ok'); },
+    say(rest) { sighText = rest; sighUntil = Date.now() + 6000; show('home'); render(); termPrint(t('tm_says', { x: rest }), 'ok'); },
     toast: (rest) => toast(rest),
     lang(rest) { if (!I18n.langs[rest]) return termPrint(`lang: ${Object.keys(I18n.langs).join(', ')}`, 'err'); I18n.set(rest); render(); termPrint(`language = ${rest}`, 'ok'); },
     music(rest) { Music.setEnabled(!/off|0|false/i.test(rest)); termPrint(`music = ${Music.enabled() ? 'on' : 'off'}`, 'ok'); },
     play(rest) {
       const cd = findCd(rest.replace(/^cd\s+/, ''));
-      if (!cd) return termPrint(`play: no CD '${rest}' ('ls cds')`, 'err');
-      if (!(S.cds || []).includes(cd.id)) return termPrint(`play: you don't own ${cd.title} (cd_${cd.id}_unlocked = true)`, 'err');
+      if (!cd) return termPrint(t('tm_noCd', { x: rest }), 'err');
+      if (!(S.cds || []).includes(cd.id)) return termPrint(t('tm_notOwned', { x: cd.title, id: cd.id }), 'err');
       playCd(cd.id); termPrint(`♪ ${cd.title}`, 'ok');
     },
-    stop() { stopCd(); termPrint('■ stopped', 'ok'); },
+    stop() { stopCd(); termPrint(t('tm_stopped'), 'ok'); },
     give(rest) {
       const [id, n = '1'] = rest.split(/\s+/);
-      if (!ITEMS[id]) return termPrint(`give: items are ${Object.keys(ITEMS).join(', ')}`, 'err');
+      if (!ITEMS[id]) return termPrint(t('tm_giveItems', { list: Object.keys(ITEMS).join(', ') }), 'err');
       if (needCheats()) return;
       addItems({ [id]: Math.max(1, parseInt(n, 10) || 1) }); changed();
       termPrint(`${id} = ${S.items[id]}`, 'ok');
     },
-    fill() { if (needCheats()) return; S.food = S.energy = S.joy = 100; changed(); termPrint('food, energy and joy = 100', 'ok'); },
+    fill() { if (needCheats()) return; S.food = S.energy = S.joy = 100; changed(); termPrint(t('tm_filled'), 'ok'); },
     golden() { if (needCheats()) return; closeTerminal(); show('home'); spawnGolden(); },
     sv_cheats(rest) {
       if (!rest) return termPrint(`sv_cheats = ${svCheats() ? 1 : 0}`);
@@ -3573,7 +3604,7 @@ const Game = (() => {
     if (slot) return termPrint(`${text} = ${JSON.stringify(slot.read())}`);
     // A bare path prints its value, like a console variable.
     if (getPath(text.replace(/^S\./, '')) !== undefined) return COMMANDS.get(text);
-    termPrint(`sbsh: command not found: ${cmd}  (type 'help')`, 'err');
+    termPrint(t('tm_notFound', { x: cmd }), 'err');
   }
   $('termIn').addEventListener('keydown', (e) => {
     e.stopPropagation();
