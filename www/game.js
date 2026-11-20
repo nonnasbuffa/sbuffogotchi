@@ -2699,6 +2699,7 @@ const Game = (() => {
       }));
     }
     list.append(grid);
+    list.append(adminButton(`💻 ${t('terminal')}`, () => { closeAdmin(); openTerminal(); }, 'main'));
     list.append(adminButton(t('cheatLock'), () => {
       S.cheats = {};
       saveCheats();
@@ -3168,6 +3169,351 @@ const Game = (() => {
       await sync();
     } catch (e) { $('loginMsg').textContent = e.message; }
   }
+
+  // ----- terminal -----
+  // A console like the ones in PC games: ` or F11 opens it (or the admin panel, on phones).
+  // Anyone can look around, open screens and change colours; changing the game itself needs
+  // sv_cheats 1, which needs the admin panel unlocked. `js` runs any JavaScript at all.
+  const GAME_VERSION = '1.4.0';
+  const term = { open: false, history: [], at: 0, started: Date.now() };
+  const svCheats = () => !!S.cheats?.unlocked && S.cheats.sv !== false;
+  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+  function termPrint(text, cls = '') {
+    const line = document.createElement('div');
+    line.className = `tl ${cls}`;
+    if (text instanceof Node) line.append(text); else line.textContent = text;
+    $('termOut').append(line);
+    $('termOut').scrollTop = $('termOut').scrollHeight;
+  }
+  const termHtml = (html, cls = '') => { const d = document.createElement('div'); d.innerHTML = html; termPrint(d, cls); };
+  function openTerminal() {
+    term.open = true;
+    $('termWin').classList.add('on');
+    if (!$('termOut').childElementCount) { fetchLogo(); termPrint("Type 'help' to see what you can do. Tab completes, ↑ ↓ go through history.", 'dim'); }
+    setTimeout(() => $('termIn').focus(), 30);
+  }
+  function closeTerminal() {
+    term.open = false;
+    $('termWin').classList.remove('on');
+    $('termIn').blur();
+  }
+  const toggleTerminal = () => (term.open ? closeTerminal() : openTerminal());
+
+  // --- values: anything you type after = is read as JSON when it can be, otherwise as text ---
+  function parseValue(raw) {
+    const v = raw.trim();
+    if (v === '') return '';
+    try { return JSON.parse(v); } catch { /* not JSON */ }
+    if (/^(on|yes)$/i.test(v)) return true;
+    if (/^(off|no)$/i.test(v)) return false;
+    return v.replace(/^['"]|['"]$/g, '');
+  }
+  const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  const findCd = (name) => CDS.find((c) => c.id === slug(name) || slug(c.title) === slug(name));
+  const findSkin = (name) => SKINS.find((s) => s.id === slug(name) || slug(t(s.key)) === slug(name));
+  const findAch = (name) => ACHIEVEMENTS.find((a) => a.id.toLowerCase() === slug(name).replace(/_/g, '') || a.id === name);
+  function getPath(path) {
+    return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), S);
+  }
+  function setPath(path, value) {
+    const keys = path.split('.');
+    let o = S;
+    for (const k of keys.slice(0, -1)) { if (typeof o[k] !== 'object' || o[k] === null) o[k] = {}; o = o[k]; }
+    o[keys.at(-1)] = value;
+  }
+  function needCheats() {
+    if (svCheats()) return false;
+    termPrint("sv_cheats is 0: this changes the game. Unlock the admin panel, then 'sv_cheats 1'.", 'err');
+    return true;
+  }
+  function changed() { tick(); S.tickAt = Date.now(); save(); sync(); render(); if ($('s-shop').classList.contains('on')) renderShop(); }
+  // "name = value", "name += value", "name -= value", plus shortcuts like cd_sbuff_n_base_unlocked = true.
+  function assign(left, op, raw) {
+    const name = left.trim();
+    const value = parseValue(raw);
+    let m;
+    if ((m = name.match(/^cd[_-](.+)[_-]unlocked$/i))) {
+      const cd = findCd(m[1]);
+      if (!cd) return termPrint(`no such CD: ${m[1]}  (try 'ls cds')`, 'err');
+      if (needCheats()) return;
+      S.cds = (S.cds || []).filter((id) => id !== cd.id);
+      if (value) S.cds.push(cd.id);
+      changed(); return termPrint(`${cd.title}: ${value ? 'unlocked' : 'locked'}`, 'ok');
+    }
+    if ((m = name.match(/^skin[_-](.+)[_-]unlocked$/i))) {
+      const skin = findSkin(m[1]);
+      if (!skin) return termPrint(`no such skin: ${m[1]}  (try 'ls skins')`, 'err');
+      if (needCheats()) return;
+      S.skins = (S.skins || []).filter((id) => id !== skin.id);
+      if (value && skin.id !== 'default') S.skins.push(skin.id);
+      changed(); return termPrint(`${t(skin.key)}: ${value ? 'unlocked' : 'locked'}`, 'ok');
+    }
+    if ((m = name.match(/^(?:ach|achievement)[_-](.+)[_-](?:claimed|unlocked)$/i))) {
+      const a = ACHIEVEMENTS.find((x) => x.id.toLowerCase() === m[1].toLowerCase().replace(/[_-]/g, '')) || findAch(m[1]);
+      if (!a) return termPrint(`no such achievement: ${m[1]}  (try 'ls achievements')`, 'err');
+      if (needCheats()) return;
+      S.achieved = { ...(S.achieved || {}) };
+      if (value) S.achieved[a.id] = Date.now(); else delete S.achieved[a.id];
+      changed(); return termPrint(`${t(`ach_${a.id}`)}: ${value ? 'claimed' : 'not claimed'}`, 'ok');
+    }
+    if ((m = name.match(/^color[_.-](\w+)$/i))) return runCommand(`color ${m[1]} ${raw}`);
+    if (needCheats()) return;
+    const path = name.replace(/^S\./, '');
+    const old = getPath(path);
+    let next = value;
+    if (op === '+=') next = Array.isArray(old) ? [...old, value] : (Number(old) || 0) + Number(value);
+    if (op === '-=') next = Array.isArray(old) ? old.filter((x) => x !== value) : (Number(old) || 0) - Number(value);
+    setPath(path, next);
+    changed();
+    termPrint(`${path} = ${JSON.stringify(next)}`, 'ok');
+  }
+
+  // --- screens and windows that 'open' knows ---
+  const OPENERS = {
+    home: () => show('home'), shop: () => { shopTab = 'sell'; show('shop'); }, cds: () => { shopTab = 'cds'; show('shop'); },
+    skins: () => { shopTab = 'skins'; show('shop'); }, bag: () => openBag(null), inventory: () => openBag(null),
+    friends: () => show('friends'), settings: () => show('settings'), achievements: () => show('ach'), ach: () => show('ach'),
+    training: () => show('trainMenu'), train: () => show('trainMenu'), bosses: () => show('bosses'), profile: () => openMyProfile(),
+    admin: () => (S.cheats?.unlocked ? openAdmin() : termPrint('the admin panel is locked', 'err')),
+    colors: () => openColors(), colours: () => openColors(), cdplayer: () => openCd(), daily: () => openDaily(),
+    name: () => openPetName(), tutorial: () => startTutorial(),
+    pong: () => startMini('pong', PIZZA_PONG), rhythm: () => startMini('rhythm', RICE_RHYTHM), catch: () => startMini('catch', RICE_CATCH),
+    parkour: () => startMini('parkour', GARDEN_PARKOUR), wipeuff: () => startMini('wipeuff', WIPE_UFF), race: () => startMini('wipeuff', WIPE_UFF),
+    whack: () => startWhack(), order: () => startOrder(), ricewrap: () => startTrain(),
+  };
+  const COLOR_NAMES = { btn: 'btn', button: 'btn', win: 'win', window: 'win', outline: 'o1', outline1: 'o1', o1: 'o1', outline2: 'o2', o2: 'o2', text: 'text', glow: 'glow' };
+
+  // --- sbuffofetch: her head as the OS logo, drawn from the real sprite with half blocks ---
+  function fetchLogo() {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      const H = 42;
+      c.width = 44; c.height = H;
+      const g2 = c.getContext('2d');
+      g2.drawImage(img, 0, 0, 44, H, 0, 0, 44, H);
+      let px;
+      try { px = g2.getImageData(0, 0, 44, H).data; } catch { px = null; }
+      // Trim empty columns so the logo hugs the head.
+      const solid = (x, y) => px && px[(y * 44 + x) * 4 + 3] > 40;
+      let x0 = 44, x1 = 0;
+      for (let y = 0; y < H; y++) for (let x = 0; x < 44; x++) if (solid(x, y)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); }
+      // Very dark pixels (her black curls, the outline) are lifted so they show on the dark terminal.
+      const col = (x, y) => {
+        const i = (y * 44 + x) * 4;
+        let [r0, g0, b0] = [px[i], px[i + 1], px[i + 2]];
+        if (r0 + g0 + b0 < 150) { r0 = r0 * 0.5 + 92; g0 = g0 * 0.5 + 80; b0 = b0 * 0.5 + 118; }
+        return `rgb(${r0 | 0},${g0 | 0},${b0 | 0})`;
+      };
+      const rows = [];
+      for (let y = 0; y < H; y += 2) {
+        let line = '';
+        for (let x = x0; x <= x1; x++) {
+          const top = solid(x, y), bot = y + 1 < H && solid(x, y + 1);
+          if (top && bot) line += `<span style="color:${col(x, y)};background:${col(x, y + 1)}">▀</span>`;
+          else if (top) line += `<span style="color:${col(x, y)}">▀</span>`;
+          else if (bot) line += `<span style="color:${col(x, y + 1)}">▄</span>`;
+          else line += ' ';
+        }
+        rows.push(line);
+      }
+      const u = Cloud.user();
+      const who = `${esc((u?.name || 'guest').toLowerCase())}@sbuffogotchi`;
+      const days = S.createdAt ? Math.max(0, Math.floor((Date.now() - S.createdAt) / 86400000)) : 0;
+      const mins = Math.floor((Date.now() - term.started) / 60000);
+      const info = [
+        `<b class="tp">${who}</b>`, '-'.repeat(who.length),
+        ['OS', `SbuffOS ${GAME_VERSION} x86_64`], ['Host', `${esc(petName())} (level ${S.level})`],
+        ['Kernel', '6.9.0-uff-sbuffling'], ['Uptime', `${days} days, ${mins} mins`],
+        ['Packages', `${Object.values(S.items).reduce((a, b) => a + (b || 0), 0)} (bag), ${(S.cds || []).length} (cd)`],
+        ['Shell', 'sbsh 1.0'], ['Resolution', `${innerWidth}x${innerHeight}`],
+        ['Theme', document.documentElement.classList.contains('modern') ? 'Modern [glass]' : 'Classic [pixel]'],
+        ['Skin', esc(t(skinNow().key))], ['CPU', `Poke Bowl Core (${S.str}) @ ${S.streak}-day streak`],
+        ['GPU', 'Rice Rendering RTX 5080'], ['Memory', `food ${Math.round(S.food)}% · energy ${Math.round(S.energy)}% · joy ${Math.round(S.joy)}%`],
+        ['Poken', (S.poken || 0).toLocaleString()], ['sv_cheats', svCheats() ? '1' : '0'],
+      ].map((r) => (Array.isArray(r) ? `<span class="tp">${r[0]}</span>: ${r[1]}` : r));
+      const blocks = ['#231d33', '#e8604c', '#5fcf80', '#ffc857', '#62b6e8', '#c46ad8', '#5fcfb8', '#f6eedd']
+        .map((b) => `<span style="background:${b}">&nbsp;&nbsp;&nbsp;</span>`).join('');
+      info.push('', blocks);
+      const wrap = document.createElement('div');
+      wrap.className = 'tfetch';
+      wrap.innerHTML = `<pre class="tlogo">${rows.join('\n')}</pre><div class="tinfo">${info.map((l) => `<div>${l || '&nbsp;'}</div>`).join('')}</div>`;
+      termPrint(wrap);
+    };
+    img.src = `${skinNow().dir}/idle_sheet.png`;
+  }
+
+  // --- commands ---
+  const HELP = [
+    ['help', 'this list'], ['sbuffofetch / neofetch', 'system info, with her head as the logo'],
+    ['open <screen>', `open a screen or window: ${Object.keys(OPENERS).join(', ')}`], ['close', 'close this terminal (or press ` / F11)'],
+    ['ls [state|items|cds|skins|achievements|screens]', 'list things'], ['get <path> / <path>', 'show a value, e.g. poken, items.diamond'],
+    ['<path> = <value>', "change anything in her save, e.g. poken = 99999, items.pizza += 5, joy = 100 (needs sv_cheats 1)"],
+    ['cd_<name>_unlocked = true', 'unlock a CD (also skin_<name>_unlocked, ach_<name>_claimed)'],
+    ['color <btn|win|outline1|outline2|text|glow> <#hex>', 'change a Modern colour; color reset to undo'],
+    ['look modern|classic', 'switch the interface style'], ['name <text>', "rename her"], ['say <text>', 'make her say something'],
+    ['lang en|es|it', 'change language'], ['music on|off', 'music on or off'], ['play <cd> / stop', 'CD player'],
+    ['give <item> [n]', 'add items (needs sv_cheats 1)'], ['fill', 'fill all her bars (needs sv_cheats 1)'],
+    ['toast <text>', 'show a message'], ['golden', 'spawn a golden poke bowl (needs sv_cheats 1)'],
+    ['sv_cheats 0|1', 'cheats off or on (needs the admin panel unlocked)'],
+    ['cat save', 'print the whole save'], ['js <code>', 'run any JavaScript: S is her save, Game is the game'],
+    ['history, clear, echo, date, whoami, uname -a, reboot', 'the usual'],
+  ];
+  const COMMANDS = {
+    help() { for (const [c, d] of HELP) termHtml(`<span class="tp">${esc(c)}</span>  <span class="dim">${esc(d)}</span>`); },
+    sbuffofetch: () => fetchLogo(), neofetch: () => fetchLogo(), fastfetch: () => fetchLogo(),
+    clear() { $('termOut').replaceChildren(); },
+    close: () => closeTerminal(), exit: () => closeTerminal(),
+    echo: (rest) => termPrint(rest),
+    date: () => termPrint(new Date().toString()),
+    whoami: () => termPrint((Cloud.user()?.name || 'guest').toLowerCase()),
+    uname: () => termPrint(`SbuffOS sbuffogotchi 6.9.0-uff-sbuffling #1 SMP PREEMPT_DYNAMIC ${GAME_VERSION} x86_64 GNU/Sbuffling`),
+    history: () => term.history.forEach((h, i) => termPrint(`${String(i + 1).padStart(4)}  ${h}`)),
+    reboot: () => location.reload(),
+    sudo: (rest) => (rest ? runCommand(rest) : termPrint('usage: sudo <command>  (you are already root here)')),
+    rm: (rest) => termPrint(/-rf|\//.test(rest) ? "nice try. she's staying." : 'rm: nothing to remove', 'err'),
+    pwd: () => termPrint(`/home/${(Cloud.user()?.name || 'guest').toLowerCase()}/${document.querySelector('.screen.on')?.id.replace('s-', '') || 'home'}`),
+    cd: (rest) => (OPENERS[rest.replace(/^\/|\/$/g, '')] ? (OPENERS[rest.replace(/^\/|\/$/g, '')](), termPrint(`→ ${rest}`)) : termPrint(`cd: ${rest}: no such screen ('ls screens')`, 'err')),
+    open(rest) {
+      const key = rest.toLowerCase().replace(/[\s_-]/g, '');
+      if (!OPENERS[key]) return termPrint(`open: ${rest}: unknown. Try: ${Object.keys(OPENERS).join(', ')}`, 'err');
+      OPENERS[key]();
+      termPrint(`opened ${key}`, 'ok');
+    },
+    ls(rest) {
+      const what = rest || 'state';
+      if (what === 'screens') return termPrint(Object.keys(OPENERS).join('  '));
+      if (what === 'items') return Object.keys(ITEMS).forEach((id) => termPrint(`${id.padEnd(10)} ${S.items[id] || 0}`));
+      if (what === 'cds') return CDS.forEach((c) => termPrint(`${(S.cds || []).includes(c.id) ? '●' : '○'} ${c.id.padEnd(18)} ${c.title}`));
+      if (what === 'skins') return SKINS.forEach((s) => termPrint(`${ownsSkin(s.id) ? '●' : '○'} ${s.id.padEnd(10)} ${t(s.key)}`));
+      if (what.startsWith('ach')) return ACHIEVEMENTS.forEach((a) => termPrint(`${(S.achieved || {})[a.id] ? '●' : '○'} ${a.id.padEnd(10)} ${t(`ach_${a.id}`)}`));
+      const obj = what === 'state' ? S : getPath(what);
+      if (obj && typeof obj === 'object') return Object.keys(obj).forEach((k) => termPrint(`${k.padEnd(14)} ${typeof obj[k] === 'object' ? (Array.isArray(obj[k]) ? `[${obj[k].length}]` : '{…}') : JSON.stringify(obj[k])}`));
+      termPrint(`ls: ${what}: nothing there`, 'err');
+    },
+    get(rest) { const v = getPath(rest.replace(/^S\./, '')); termPrint(v === undefined ? `${rest}: undefined` : JSON.stringify(v, null, 2)); },
+    cat(rest) { if (/save/.test(rest)) termPrint(JSON.stringify(S, null, 2)); else termPrint(`cat: ${rest}: try 'cat save'`, 'err'); },
+    set(rest) { const m = rest.match(/^(\S+)\s+(.*)$/); if (!m) return termPrint('usage: set <path> <value>', 'err'); assign(m[1], '=', m[2]); },
+    color(rest) {
+      const [k, hex] = rest.split(/\s+/);
+      if (k === 'reset') { setLookColors({}); return termPrint('colours reset', 'ok'); }
+      const key = COLOR_NAMES[(k || '').toLowerCase()];
+      if (!key || !/^#?[0-9a-f]{6}$/i.test(hex || '')) return termPrint('usage: color <btn|win|outline1|outline2|text|glow> <#rrggbb>  or  color reset', 'err');
+      if (!document.documentElement.classList.contains('modern')) runCommand('look modern');
+      const now = lookColors(); now[key] = hex.startsWith('#') ? hex : `#${hex}`; setLookColors(now);
+      termPrint(`${k} = ${now[key]}`, 'ok');
+    },
+    look(rest) {
+      const on = /modern/i.test(rest);
+      if (!/modern|classic/i.test(rest)) return termPrint('usage: look modern|classic', 'err');
+      document.documentElement.classList.toggle('modern', on);
+      window.applyLookColors?.(on ? lookColors() : null);
+      try { localStorage.setItem('sbuffogotchi.look', on ? 'modern' : 'classic'); } catch { /* this session only */ }
+      termPrint(`look = ${on ? 'modern' : 'classic'}`, 'ok');
+    },
+    name(rest) { S.petName = rest.slice(0, PET_NAME_MAX); save(); sync(); render(); termPrint(`her name is now ${petName()}`, 'ok'); },
+    say(rest) { sighText = rest; sighUntil = Date.now() + 6000; show('home'); render(); termPrint(`she says: ${rest}`, 'ok'); },
+    toast: (rest) => toast(rest),
+    lang(rest) { if (!I18n.langs[rest]) return termPrint(`lang: ${Object.keys(I18n.langs).join(', ')}`, 'err'); I18n.set(rest); render(); termPrint(`language = ${rest}`, 'ok'); },
+    music(rest) { Music.setEnabled(!/off|0|false/i.test(rest)); termPrint(`music = ${Music.enabled() ? 'on' : 'off'}`, 'ok'); },
+    play(rest) {
+      const cd = findCd(rest.replace(/^cd\s+/, ''));
+      if (!cd) return termPrint(`play: no CD '${rest}' ('ls cds')`, 'err');
+      if (!(S.cds || []).includes(cd.id)) return termPrint(`play: you don't own ${cd.title} (cd_${cd.id}_unlocked = true)`, 'err');
+      playCd(cd.id); termPrint(`♪ ${cd.title}`, 'ok');
+    },
+    stop() { stopCd(); termPrint('■ stopped', 'ok'); },
+    give(rest) {
+      const [id, n = '1'] = rest.split(/\s+/);
+      if (!ITEMS[id]) return termPrint(`give: items are ${Object.keys(ITEMS).join(', ')}`, 'err');
+      if (needCheats()) return;
+      addItems({ [id]: Math.max(1, parseInt(n, 10) || 1) }); changed();
+      termPrint(`${id} = ${S.items[id]}`, 'ok');
+    },
+    fill() { if (needCheats()) return; S.food = S.energy = S.joy = 100; changed(); termPrint('food, energy and joy = 100', 'ok'); },
+    golden() { if (needCheats()) return; closeTerminal(); show('home'); spawnGolden(); },
+    sv_cheats(rest) {
+      if (!rest) return termPrint(`sv_cheats = ${svCheats() ? 1 : 0}`);
+      if (!S.cheats?.unlocked) return termPrint('sv_cheats needs the admin panel unlocked first.', 'err');
+      S.cheats.sv = rest.trim() !== '0'; save();
+      termPrint(`sv_cheats = ${svCheats() ? 1 : 0}`, 'ok');
+    },
+    js(rest) {
+      try {
+        // Runs with the save and the game in reach; whatever it returns is printed.
+        const out = new Function('S', 'Game', 'save', 'render', 'show', 'toast', `return (${rest})`)(S, window.Game, save, render, show, toast);
+        if (out !== undefined) termPrint(typeof out === 'string' ? out : JSON.stringify(out, null, 2));
+        render();
+      } catch (e1) {
+        try { new Function('S', 'Game', 'save', 'render', 'show', 'toast', rest)(S, window.Game, save, render, show, toast); render(); } catch (e2) { termPrint(String(e2), 'err'); }
+      }
+    },
+  };
+  COMMANDS.eval = COMMANDS.js;
+  function runCommand(line) {
+    const text = line.trim();
+    if (!text) return;
+    const m = text.match(/^([\w.\-[\]]+)\s*(\+=|-=|=)\s*(.*)$/);
+    if (m && !COMMANDS[m[1]]) return assign(m[1], m[2], m[3]);
+    const [cmd, ...restParts] = text.split(/\s+/);
+    const rest = text.slice(cmd.length).trim();
+    const fn = COMMANDS[cmd.toLowerCase()];
+    if (fn) return fn(rest, restParts);
+    // A bare path prints its value, like a console variable.
+    if (getPath(text.replace(/^S\./, '')) !== undefined) return COMMANDS.get(text);
+    termPrint(`sbsh: command not found: ${cmd}  (type 'help')`, 'err');
+  }
+  $('termIn').addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    const input = $('termIn');
+    if (e.key === 'Enter') {
+      const line = input.value;
+      input.value = '';
+      termHtml(`<span class="tp">${esc((Cloud.user()?.name || 'guest').toLowerCase())}@sbuffogotchi</span>:<span class="tb">~</span>$ ${esc(line)}`);
+      if (line.trim()) { term.history.push(line); term.at = term.history.length; }
+      try { runCommand(line); } catch (err) { termPrint(String(err), 'err'); }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      term.at = Math.max(0, term.at - 1); input.value = term.history[term.at] || '';
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      term.at = Math.min(term.history.length, term.at + 1); input.value = term.history[term.at] || '';
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      const words = input.value.split(' ');
+      const last = words.at(-1);
+      const pool = words.length === 1 ? Object.keys(COMMANDS) : words[0] === 'open' || words[0] === 'cd' ? Object.keys(OPENERS)
+        : words[0] === 'play' ? CDS.map((c) => c.id) : words[0] === 'give' ? Object.keys(ITEMS) : Object.keys(S);
+      const hits = pool.filter((w) => w.startsWith(last));
+      if (hits.length === 1) { words[words.length - 1] = hits[0]; input.value = `${words.join(' ')} `; }
+      else if (hits.length > 1) termPrint(hits.join('  '), 'dim');
+    } else if (e.key === 'Escape' || e.code === 'Backquote' || e.key === 'F11') {
+      e.preventDefault(); closeTerminal();
+    }
+  });
+  $('termOut').addEventListener('pointerup', () => { if (!getSelection().toString()) $('termIn').focus(); });
+  $('btnTermClose').onclick = closeTerminal;
+  // ` (the key under Esc, like PC games) or F11 opens it on computers.
+  window.addEventListener('keydown', (e) => {
+    if (!(e.code === 'Backquote' || e.key === 'F11')) return;
+    const typing = document.activeElement?.matches?.('input:not(#keyCatcher), textarea') && document.activeElement !== $('termIn');
+    if (typing && e.key !== 'F11') return;
+    e.preventDefault(); e.stopPropagation();
+    toggleTerminal();
+  }, true);
+  // Dragged by its title bar, like the admin panel.
+  $('termDrag').onpointerdown = (e) => {
+    if (e.target.closest('button')) return;
+    const win = $('termWin');
+    const box = win.getBoundingClientRect();
+    const dx = e.clientX - box.left, dy = e.clientY - box.top;
+    $('termDrag').setPointerCapture(e.pointerId);
+    $('termDrag').onpointermove = (m) => {
+      win.style.left = `${Math.max(-box.width / 2, Math.min(innerWidth - box.width / 2, m.clientX - dx)) + box.width / 2}px`;
+      win.style.top = `${Math.max(0, Math.min(innerHeight - 40, m.clientY - dy)) + box.height / 2}px`;
+    };
+    $('termDrag').onpointerup = () => { $('termDrag').onpointermove = null; };
+  };
 
   // ----- wiring -----
   $('btnFeed').onclick = () => openBag('food');

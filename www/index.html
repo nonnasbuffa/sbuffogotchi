@@ -204,6 +204,26 @@ html.modern .colorRow{display:grid;grid-template-columns:1fr 64px;gap:10px;align
 .colorRow input[type=color]{width:64px;height:40px;padding:0;border-radius:10px;cursor:pointer;background:none}
 .colorRow input[type=color]:disabled{opacity:.35}
 @media (prefers-reduced-motion:reduce){html.modern *,html.modern body{animation:none!important;transition:none!important}}
+
+/* ----- terminal ----- */
+.termWin{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(calc(100vw - 16px),940px);height:min(calc(100dvh - 24px),620px);display:none;flex-direction:column;z-index:40;
+  background:rgba(16,15,24,.9);backdrop-filter:blur(14px);border:2px solid #f5a3c7;border-radius:14px;box-shadow:0 0 14px rgba(245,163,199,.25),0 20px 60px rgba(0,0,0,.6);
+  font:14px/1.35 "Courier New",ui-monospace,monospace;color:#e8e3f0;overflow:hidden;user-select:text}
+.termWin.on{display:flex}
+.termTitle{display:flex;align-items:center;gap:10px;padding:6px 10px;cursor:move;touch-action:none;border-bottom:1px solid rgba(255,255,255,.08);color:#a79fb8;font-size:13px}
+.termTitle b{flex:1;text-align:center;font-weight:normal}
+.termTitle button{min-height:0;padding:2px 8px;border:0;background:none;color:#a79fb8;font-size:16px}
+.termDots{display:flex;gap:6px}.termDots i{width:11px;height:11px;border-radius:50%;background:#ff6b81}.termDots i+i{background:#ffc857}.termDots i+i+i{background:#5fcf80}
+.termOut{flex:1;overflow:auto;padding:10px 14px;white-space:pre-wrap;word-break:break-word}
+.termOut .tl{min-height:1.35em}.termOut .err{color:#ff8a9a}.termOut .ok{color:#9ff0c4}.termOut .dim{color:#8f86a3}
+.tp{color:#f5a3c7;font-weight:bold}.tb{color:#8fb8ff}
+.termLine{display:flex;align-items:center;gap:8px;padding:8px 14px 12px;border-top:1px solid rgba(255,255,255,.06)}
+.termLine input{flex:1;background:none;border:0;padding:4px 0;color:#fff;font:inherit;outline:none;caret-color:#f5a3c7;box-shadow:none!important;border-radius:0}
+.tfetch{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap;margin:4px 0 8px}
+.tlogo{margin:0;font:inherit;line-height:1.1;font-size:13px;letter-spacing:0;white-space:pre}
+.tinfo{display:flex;flex-direction:column;gap:1px;min-width:0}
+html.modern .termLine input,html.modern .termTitle button{background:none!important;border:0!important;box-shadow:none!important;backdrop-filter:none!important;border-radius:0}
+@media (max-width:600px){.termWin{font-size:12px}.tlogo{font-size:9px}.tfetch{gap:10px}}
 </style>
 <script>
 // The player's Modern colours (Settings → Colours), kept on this device.
@@ -425,6 +445,11 @@ try{if(localStorage.getItem('sbuffogotchi.look')==='modern'){document.documentEl
 <div class="adminWin" id="adminWin" role="dialog" aria-labelledby="adminWinTitle">
   <div class="winTitle" id="adminDrag"><img src="sprites/icons/admin.png" alt=""><b id="adminWinTitle" data-i18n="adminTitle"></b><button id="btnAdminClose" aria-label="Close">✕</button></div>
   <div class="menuList" id="adminList"></div>
+</div>
+<div class="termWin" id="termWin" role="dialog" aria-label="Terminal">
+  <div class="termTitle" id="termDrag"><span class="termDots"><i></i><i></i><i></i></span><b>sbsh — sbuffogotchi</b><button id="btnTermClose" aria-label="Close">✕</button></div>
+  <div class="termOut" id="termOut"></div>
+  <div class="termLine"><span class="tp">$</span><input id="termIn" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="send"></div>
 </div>
 <div class="adminWin" id="giftWin" role="dialog" aria-labelledby="giftWinTitle">
   <div class="winTitle giftTitle"><img src="sprites/icons/gift.png" alt=""><b id="giftWinTitle"></b><button id="btnGiftClose" aria-label="Close">✕</button></div>
