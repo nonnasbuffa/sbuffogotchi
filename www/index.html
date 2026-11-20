@@ -223,6 +223,17 @@ html.modern .colorRow{display:grid;grid-template-columns:1fr 64px;gap:10px;align
 .tlogo{margin:0;font:inherit;line-height:1.1;font-size:13px;letter-spacing:0;white-space:pre}
 .tinfo{display:flex;flex-direction:column;gap:1px;min-width:0}
 html.modern .termLine input,html.modern .termTitle button{background:none!important;border:0!important;box-shadow:none!important;backdrop-filter:none!important;border-radius:0}
+/* Classic look: the terminal matches the pixel windows (square, gold frame, flat colours). */
+html:not(.modern) .termWin{background:#120e1c;backdrop-filter:none;border:4px solid #000;border-radius:0;box-shadow:inset 0 0 0 3px var(--gold),0 20px 50px #000d;color:var(--text)}
+html:not(.modern) .termTitle{background:var(--panel);border-bottom:3px solid var(--gold);color:var(--gold);margin:3px 3px 0;font-weight:bold}
+html:not(.modern) .termTitle b{font-weight:bold}
+html:not(.modern) .termTitle button{color:var(--gold)}
+html:not(.modern) .termDots i{border-radius:0;width:10px;height:10px;box-shadow:0 0 0 2px #000}
+html:not(.modern) .termLine{border-top:3px solid var(--line);margin:0 3px 3px}
+html:not(.modern) .termWin .tp{color:var(--gold)}
+html:not(.modern) .termOut .ok{color:var(--green)}html:not(.modern) .termOut .err{color:var(--red)}
+html:not(.modern) .termLine input{caret-color:var(--gold)}
+.termOut{scrollbar-color:#55486f transparent}html.modern .termOut{scrollbar-color:rgba(245,163,199,.4) transparent}
 @media (max-width:600px){.termWin{font-size:12px}.tlogo{font-size:9px}.tfetch{gap:10px}}
 </style>
 <script>

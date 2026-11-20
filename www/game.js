@@ -3178,7 +3178,7 @@ const Game = (() => {
   // A console like the ones in PC games: ` or F11 opens it (or the admin panel, on phones).
   // Anyone can look around, open screens and change colours; changing the game itself needs
   // sv_cheats 1, which anyone can type (if they know it). `js` runs any JavaScript at all.
-  const GAME_VERSION = '1.4.1';
+  const GAME_VERSION = '1.4.2';
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const svCheats = () => S.svCheats === true;
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
@@ -3231,45 +3231,75 @@ const Game = (() => {
     return true;
   }
   function changed() { tick(); S.tickAt = Date.now(); save(); sync(); render(); if ($('s-shop').classList.contains('on')) renderShop(); }
-  // "name = value", "name += value", "name -= value", plus shortcuts like cd_sbuff_n_base_unlocked = true.
+  // Changes are written with full paths that start with get., like a real console:
+  //   get.items.poken = 500   get.items.pizza += 3   get.stats.food = 100
+  //   get.cds.sbuff_n_base = true   get.skins.babbo = true   get.achievements.<id> = true
+  // The value must have the right type: a number where a number goes, true/false where that goes.
+  const STATS = ['food', 'energy', 'joy', 'level', 'xp', 'str', 'streak', 'bossWins'];
+  function typedValue(raw, kind, path) {
+    const v = raw.trim();
+    if (kind === 'number') {
+      if (!/^-?\d+(\.\d+)?(e\d+)?$/i.test(v)) { termPrint(`SyntaxError: ${path} is a number, '${v}' is not`, 'err'); return undefined; }
+      return Number(v);
+    }
+    if (kind === 'boolean') {
+      if (v !== 'true' && v !== 'false') { termPrint(`SyntaxError: ${path} is true or false, '${v}' is not`, 'err'); return undefined; }
+      return v === 'true';
+    }
+    if (kind === 'string') {
+      const m = v.match(/^"(.*)"$|^'(.*)'$/);
+      if (!m) { termPrint(`SyntaxError: ${path} is text, write it in quotes: "${v}"`, 'err'); return undefined; }
+      return m[1] ?? m[2];
+    }
+    return undefined;
+  }
+  // Works out what a get.* path points at: how to read it, how to write it, and its type.
+  function resolve(path) {
+    const parts = path.split('.');
+    if (parts[0] !== 'get' || parts.length < 3) return null;
+    const [, group, ...rest] = parts;
+    const key = rest.join('.');
+    if (group === 'items') {
+      if (key === 'poken') return { kind: 'number', read: () => S.poken || 0, write: (v) => { S.poken = v; } };
+      if (!(key in S.items)) return null;
+      return { kind: 'number', read: () => S.items[key] || 0, write: (v) => { S.items[key] = v; } };
+    }
+    if (group === 'stats') {
+      if (!STATS.includes(key)) return null;
+      return { kind: 'number', read: () => S[key], write: (v) => { S[key] = v; } };
+    }
+    if (group === 'pet' && key === 'name') return { kind: 'string', read: () => petName(), write: (v) => { S.petName = v; } };
+    if (group === 'cds') {
+      const cd = findCd(key); if (!cd) return null;
+      return { kind: 'boolean', read: () => (S.cds || []).includes(cd.id),
+        write: (v) => { S.cds = (S.cds || []).filter((id) => id !== cd.id); if (v) S.cds.push(cd.id); } };
+    }
+    if (group === 'skins') {
+      const skin = findSkin(key); if (!skin) return null;
+      return { kind: 'boolean', read: () => skin.id === 'default' || (S.skins || []).includes(skin.id),
+        write: (v) => { S.skins = (S.skins || []).filter((id) => id !== skin.id); if (v && skin.id !== 'default') S.skins.push(skin.id); } };
+    }
+    if (group === 'achievements') {
+      const ac = findAch(key); if (!ac) return null;
+      return { kind: 'boolean', read: () => !!S.achieved?.[ac.id],
+        write: (v) => { S.achieved = { ...(S.achieved || {}) }; if (v) S.achieved[ac.id] = Date.now(); else delete S.achieved[ac.id]; } };
+    }
+    return null;
+  }
   function assign(left, op, raw) {
-    const name = left.trim();
-    const value = parseValue(raw);
-    let m;
-    if ((m = name.match(/^cd[_-](.+)[_-]unlocked$/i))) {
-      const cd = findCd(m[1]);
-      if (!cd) return termPrint(`no such CD: ${m[1]}  (try 'ls cds')`, 'err');
-      if (needCheats()) return;
-      S.cds = (S.cds || []).filter((id) => id !== cd.id);
-      if (value) S.cds.push(cd.id);
-      changed(); return termPrint(`${cd.title}: ${value ? 'unlocked' : 'locked'}`, 'ok');
-    }
-    if ((m = name.match(/^skin[_-](.+)[_-]unlocked$/i))) {
-      const skin = findSkin(m[1]);
-      if (!skin) return termPrint(`no such skin: ${m[1]}  (try 'ls skins')`, 'err');
-      if (needCheats()) return;
-      S.skins = (S.skins || []).filter((id) => id !== skin.id);
-      if (value && skin.id !== 'default') S.skins.push(skin.id);
-      changed(); return termPrint(`${t(skin.key)}: ${value ? 'unlocked' : 'locked'}`, 'ok');
-    }
-    if ((m = name.match(/^(?:ach|achievement)[_-](.+)[_-](?:claimed|unlocked)$/i))) {
-      const a = ACHIEVEMENTS.find((x) => x.id.toLowerCase() === m[1].toLowerCase().replace(/[_-]/g, '')) || findAch(m[1]);
-      if (!a) return termPrint(`no such achievement: ${m[1]}  (try 'ls achievements')`, 'err');
-      if (needCheats()) return;
-      S.achieved = { ...(S.achieved || {}) };
-      if (value) S.achieved[a.id] = Date.now(); else delete S.achieved[a.id];
-      changed(); return termPrint(`${t(`ach_${a.id}`)}: ${value ? 'claimed' : 'not claimed'}`, 'ok');
-    }
-    if ((m = name.match(/^color[_.-](\w+)$/i))) return runCommand(`color ${m[1]} ${raw}`);
+    const path = left.trim();
+    if ((/^color[_.-](\w+)$/i).test(path)) return runCommand(`color ${path.split(/[_.-]/)[1]} ${raw}`);
+    if (!path.startsWith('get.')) return termPrint(`${path}: command not found  (values are changed with get.<group>.<name>, see 'help')`, 'err');
+    const slot = resolve(path);
+    if (!slot) return termPrint(`ReferenceError: ${path} does not exist  (try 'ls items', 'ls cds', 'ls skins', 'ls achievements')`, 'err');
+    if (op !== '=' && slot.kind !== 'number') return termPrint(`TypeError: ${op} only works on numbers`, 'err');
+    const value = typedValue(raw, slot.kind, path);
+    if (value === undefined) return;
     if (needCheats()) return;
-    const path = name.replace(/^S\./, '');
-    const old = getPath(path);
-    let next = value;
-    if (op === '+=') next = Array.isArray(old) ? [...old, value] : (Number(old) || 0) + Number(value);
-    if (op === '-=') next = Array.isArray(old) ? old.filter((x) => x !== value) : (Number(old) || 0) - Number(value);
-    setPath(path, next);
+    const next = op === '+=' ? slot.read() + value : op === '-=' ? slot.read() - value : value;
+    slot.write(next);
     changed();
-    termPrint(`${path} = ${JSON.stringify(next)}`, 'ok');
+    termPrint(`${path} = ${JSON.stringify(slot.read())}`, 'ok');
   }
 
   // --- screens and windows that 'open' knows ---
@@ -3353,8 +3383,10 @@ const Game = (() => {
     ['help', 'this list'], ['sbuffofetch / neofetch', 'system info, with her head as the logo'],
     ['open <screen>', `open a screen or window: ${Object.keys(OPENERS).join(', ')}`], ['close', 'close this terminal (or press ` / F11)'],
     ['ls [state|items|cds|skins|achievements|screens]', 'list things'], ['get <path> / <path>', 'show a value, e.g. poken, items.diamond'],
-    ['<path> = <value>', "change anything in her save, e.g. poken = 99999, items.pizza += 5, joy = 100 (needs sv_cheats 1)"],
-    ['cd_<name>_unlocked = true', 'unlock a CD (also skin_<name>_unlocked, ach_<name>_claimed)'],
+    ['get.items.<item> = <number>', 'set an item, e.g. get.items.poken = 99999, get.items.pizza += 5 (needs sv_cheats 1)'],
+    ['get.stats.<food|energy|joy|level|xp|str|streak|bossWins> = <number>', 'set a stat'],
+    ['get.cds.<cd> = true|false', 'own a CD or not (also get.skins.<skin>, get.achievements.<id>)'],
+    ['get.pet.name = "<text>"', 'rename her (text goes in quotes)'],
     ['color <btn|win|outline1|outline2|text|glow> <#hex>', 'change a Modern colour; color reset to undo'],
     ['look modern|classic', 'switch the interface style'], ['name <text>', "rename her"], ['say <text>', 'make her say something'],
     ['lang en|es|it', 'change language'], ['music on|off', 'music on or off'], ['play <cd> / stop', 'CD player'],
@@ -3463,6 +3495,8 @@ const Game = (() => {
     const rest = text.slice(cmd.length).trim();
     const fn = COMMANDS[cmd.toLowerCase()];
     if (fn) return fn(rest, restParts);
+    const slot = text.startsWith('get.') && resolve(text);
+    if (slot) return termPrint(`${text} = ${JSON.stringify(slot.read())}`);
     // A bare path prints its value, like a console variable.
     if (getPath(text.replace(/^S\./, '')) !== undefined) return COMMANDS.get(text);
     termPrint(`sbsh: command not found: ${cmd}  (type 'help')`, 'err');
