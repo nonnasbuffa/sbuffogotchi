@@ -765,6 +765,10 @@ const Game = (() => {
       renderSettings();
     };
     list.append(look);
+    const termBtn = document.createElement('button');
+    termBtn.textContent = `💻 ${t('terminal')}`;
+    termBtn.onclick = () => openTerminal();
+    list.append(termBtn);
     if (modern) {
       const colors = document.createElement('button');
       colors.textContent = `🎨 ${t('colorsTitle')}`;
@@ -3173,10 +3177,10 @@ const Game = (() => {
   // ----- terminal -----
   // A console like the ones in PC games: ` or F11 opens it (or the admin panel, on phones).
   // Anyone can look around, open screens and change colours; changing the game itself needs
-  // sv_cheats 1, which needs the admin panel unlocked. `js` runs any JavaScript at all.
-  const GAME_VERSION = '1.4.0';
+  // sv_cheats 1, which anyone can type (if they know it). `js` runs any JavaScript at all.
+  const GAME_VERSION = '1.4.1';
   const term = { open: false, history: [], at: 0, started: Date.now() };
-  const svCheats = () => !!S.cheats?.unlocked && S.cheats.sv !== false;
+  const svCheats = () => S.svCheats === true;
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
   function termPrint(text, cls = '') {
     const line = document.createElement('div');
@@ -3223,7 +3227,7 @@ const Game = (() => {
   }
   function needCheats() {
     if (svCheats()) return false;
-    termPrint("sv_cheats is 0: this changes the game. Unlock the admin panel, then 'sv_cheats 1'.", 'err');
+    termPrint("sv_cheats is 0: this changes the game. Type 'sv_cheats 1' first.", 'err');
     return true;
   }
   function changed() { tick(); S.tickAt = Date.now(); save(); sync(); render(); if ($('s-shop').classList.contains('on')) renderShop(); }
@@ -3309,11 +3313,12 @@ const Game = (() => {
       for (let y = 0; y < H; y += 2) {
         let line = '';
         for (let x = x0; x <= x1; x++) {
-          const top = solid(x, y), bot = y + 1 < H && solid(x, y + 1);
-          if (top && bot) line += `<span style="color:${col(x, y)};background:${col(x, y + 1)}">▀</span>`;
-          else if (top) line += `<span style="color:${col(x, y)}">▀</span>`;
-          else if (bot) line += `<span style="color:${col(x, y + 1)}">▄</span>`;
-          else line += ' ';
+          const yy = solid(x, y) ? y : (y + 1 < H && solid(x, y + 1) ? y + 1 : -1);
+          if (yy < 0) { line += ' '; continue; }
+          const i = (yy * 44 + x) * 4;
+          const lum = (px[i] * 0.3 + px[i + 1] * 0.59 + px[i + 2] * 0.11) / 255;
+          const ch = '@#%$*+=o:'[Math.min(8, Math.floor(lum * 9))];
+          line += `<span style="color:${col(x, yy)}">${ch}</span>`;
         }
         rows.push(line);
       }
@@ -3355,7 +3360,7 @@ const Game = (() => {
     ['lang en|es|it', 'change language'], ['music on|off', 'music on or off'], ['play <cd> / stop', 'CD player'],
     ['give <item> [n]', 'add items (needs sv_cheats 1)'], ['fill', 'fill all her bars (needs sv_cheats 1)'],
     ['toast <text>', 'show a message'], ['golden', 'spawn a golden poke bowl (needs sv_cheats 1)'],
-    ['sv_cheats 0|1', 'cheats off or on (needs the admin panel unlocked)'],
+    ['sv_cheats 0|1', 'cheats off or on'],
     ['cat save', 'print the whole save'], ['js <code>', 'run any JavaScript: S is her save, Game is the game'],
     ['history, clear, echo, date, whoami, uname -a, reboot', 'the usual'],
   ];
@@ -3434,8 +3439,7 @@ const Game = (() => {
     golden() { if (needCheats()) return; closeTerminal(); show('home'); spawnGolden(); },
     sv_cheats(rest) {
       if (!rest) return termPrint(`sv_cheats = ${svCheats() ? 1 : 0}`);
-      if (!S.cheats?.unlocked) return termPrint('sv_cheats needs the admin panel unlocked first.', 'err');
-      S.cheats.sv = rest.trim() !== '0'; save();
+      S.svCheats = rest.trim() !== '0'; save();
       termPrint(`sv_cheats = ${svCheats() ? 1 : 0}`, 'ok');
     },
     js(rest) {
