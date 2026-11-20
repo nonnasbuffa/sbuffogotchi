@@ -100,6 +100,7 @@ const Game = (() => {
   function save() {
     S.updatedAt = Date.now();
     localStorage.setItem(SAVE_KEY, JSON.stringify(S));
+    if (typeof planReminders === 'function') planReminders();
     clearTimeout(syncTimer);
     syncTimer = setTimeout(sync, 2500);
   }
@@ -735,7 +736,20 @@ const Game = (() => {
       const note = document.createElement('button');
       note.textContent = `${t('notifications')}: ${t(Notify.enabled() ? 'musicOn' : 'musicOff')}`;
       if (Notify.enabled()) note.className = 'picked';
-      note.onclick = async () => { await Notify.setEnabled(!Notify.enabled()); renderSettings(); };
+      note.onclick = async () => {
+        if (Notify.enabled() && note.dataset.blocked) {
+          if (!(await Notify.ask())) toast(t('notifBlockedHelp'));
+        } else await Notify.setEnabled(!Notify.enabled());
+        planReminders();
+        renderSettings();
+      };
+      // If the phone said no, say so: tapping asks again, or explains where to allow them.
+      Notify.allowed().then((ok) => {
+        if (ok || !Notify.enabled()) return;
+        note.dataset.blocked = '1';
+        note.className = '';
+        note.textContent = `${t('notifications')}: ${t('notifBlocked')}`;
+      });
       list.append(note);
     }
     // Look: the classic pixel interface, or the modern rounded and glowing one. Saved on this device.
@@ -3036,45 +3050,77 @@ const Game = (() => {
   window.addEventListener('resize', drawTutorial);
 
   // ----- phone reminders -----
-  // Worked out from her bars when the app goes to the background, and cleared when it comes back.
+  // The whole schedule is rebuilt every few minutes while the game is open (and when it closes),
+  // so it is always ready even if the phone suspends the app before it can react to being closed.
   const QUIET_FROM = 22; // No gentle reminders from 22:00...
   const QUIET_TO = 9; // ...until 9:00. Urgent ones still come, since she could die overnight.
+  const MIN_GAP_MS = 60 * 60000; // Gentle reminders are at least an hour apart.
+  const FIRST_AFTER_MS = 30 * 60000; // Nothing in the first half hour after leaving.
   function outsideQuietHours(ms) {
     const d = new Date(ms);
     if (d.getHours() >= QUIET_FROM) { d.setDate(d.getDate() + 1); d.setHours(QUIET_TO, 0, 0, 0); }
     else if (d.getHours() < QUIET_TO) d.setHours(QUIET_TO, 0, 0, 0);
     return d.getTime();
   }
-  function reminders() {
+  // Each bar warns at several levels, so a pet left alone gets a few nudges before it is urgent.
+  const NEED_STEPS = {
+    food: [[50, 'notifPeckish'], [30, 'notifHungry'], [15, 'notifVeryHungry'], [8, 'notifStarving', true], [5, 'notifLastChance', true]],
+    energy: [[45, 'notifSleepy'], [30, 'notifTired'], [15, 'notifVeryTired'], [8, 'notifExhausted', true], [3, 'notifLastChance', true]],
+    joy: [[45, 'notifBored'], [25, 'notifLonely'], [10, 'notifSad']],
+  };
+  function reminders(now = Date.now()) {
     tick();
     if (isDead()) return [];
-    const now = Date.now();
     const list = [];
-    const inHours = (h) => Math.max(now + 30 * 60000, now + h * 3600000);
-    const until = (k, level) => (S[k] - level) / DECAY_PER_HOUR[k];
-    const add = (id, key, at, urgent = false, vars = {}) => list.push({
-      id, title: t(`${key}Title`, vars), body: t(`${key}Body`, vars), at: urgent ? at : outsideQuietHours(at),
+    const after = (ms) => Math.max(now + FIRST_AFTER_MS, ms);
+    const at = (k, level) => now + ((S[k] - level) / DECAY_PER_HOUR[k]) * 3600000;
+    const deathAt = Math.min(at('food', 0), at('energy', 0));
+    // Night-time reminders wait for the morning, unless the morning would be too close to her dying.
+    // (Only food and energy can make her die, so only they may break the quiet hours.)
+    const when = (ms, urgent, vital) => {
+      if (urgent) return after(ms);
+      const morning = outsideQuietHours(after(ms));
+      return vital && morning > deathAt - 6 * 3600000 ? after(ms) : morning;
+    };
+    const add = (key, ms, urgent = false, vars = {}, important = false, vital = false) => list.push({
+      key, urgent, important, title: t(`${key}Title`, vars), body: t(`${key}Body`, vars), at: when(ms, urgent, vital),
     });
     if (!cheat('god')) {
-      if (S.food > 30) add(102, 'notifHungry', inHours(until('food', 30)));
-      add(103, 'notifStarving', inHours(until('food', 8)), true);
-      if (S.energy > 30) add(104, 'notifTired', inHours(until('energy', 30)));
-      add(105, 'notifExhausted', inHours(until('energy', 8)), true);
-      if (S.joy > 25) add(106, 'notifLonely', inHours(until('joy', 25)));
+      for (const [k, steps] of Object.entries(NEED_STEPS)) {
+        // With a CD playing her joy doesn't drop, but the CD stops when the app closes, so plan as usual.
+        for (const [level, key, urgent] of steps) if (S[k] > level) add(key, at(k, level), !!urgent, {}, false, k !== 'joy');
+      }
     }
-    // Tomorrow evening, the streak goes up by one if she gets a visit.
-    const evening = new Date(Cloud.now());
-    evening.setDate(evening.getDate() + 1); evening.setHours(19, 0, 0, 0);
-    add(101, 'notifStreak', evening.getTime(), false, { n: S.streak + 1 });
-    // The next daily reward, in the morning.
-    const morning = new Date(Cloud.now());
-    if (!dailyReady() || morning.getHours() >= 10) morning.setDate(morning.getDate() + 1);
-    morning.setHours(10, 0, 0, 0);
-    add(107, 'notifDaily', morning.getTime());
-    return list;
+    // Streak: tomorrow at 19:00, and a last call at 21:30.
+    const day = (offset, h, m = 0) => { const d = new Date(Cloud.now()); d.setDate(d.getDate() + offset); d.setHours(h, m, 0, 0); return d.getTime(); };
+    add('notifStreak', day(1, 19), false, { n: S.streak + 1 }, true);
+    if (S.streak >= 3) add('notifStreakLast', day(1, 21, 30), true, { n: S.streak });
+    // Daily reward in the morning, and a midday visit for every day of the next three she isn't seen.
+    add('notifDaily', dailyReady() && new Date(Cloud.now()).getHours() < 10 ? day(0, 10) : day(1, 10));
+    for (let d = 1; d <= 3; d++) add('notifMiss', day(d, 13, 30));
+    // Nothing after the moment she would die.
+    const alive = list.filter((n) => n.at < deathAt);
+    // Urgent and streak reminders always come; gentle ones fill in at least an hour away from everything else,
+    // and "she misses you" only on a day with nothing else to say.
+    const kept = alive.filter((n) => n.urgent || n.important);
+    const gentle = alive.filter((n) => !n.urgent && !n.important).sort((a, b) => a.at - b.at);
+    const sameDay = (a, b) => new Date(a).toDateString() === new Date(b).toDateString();
+    for (const n of gentle) {
+      if (kept.some((o) => Math.abs(o.at - n.at) < MIN_GAP_MS)) continue;
+      if (n.key === 'notifMiss' && kept.some((o) => sameDay(o.at, n.at))) continue;
+      kept.push(n);
+    }
+    kept.sort((a, b) => a.at - b.at);
+    return kept.slice(0, 40).map((n, i) => ({ ...n, id: 101 + i }));
   }
-  function leavingApp() { Notify.plan(reminders()); }
-  function backInApp() { Notify.clear(); }
+  let planTimer = null;
+  function planReminders() {
+    clearTimeout(planTimer);
+    planTimer = setTimeout(() => Notify.plan(reminders()), 400);
+  }
+  function leavingApp() { clearTimeout(planTimer); Notify.plan(reminders()); }
+  function backInApp() { Notify.clear().then(() => planReminders()); }
+  setInterval(() => { if (!document.hidden) planReminders(); }, 5 * 60000);
 
   // ----- accounts -----
   async function enterGame() {

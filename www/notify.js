@@ -3,7 +3,7 @@
 const Notify = (() => {
   const KEY = 'sbuffogotchi.notify';
   const ASKED_KEY = 'sbuffogotchi.notifyAsked';
-  const IDS = [101, 102, 103, 104, 105, 106, 107];
+  const IDS = Array.from({ length: 60 }, (_, i) => 101 + i);
   const plugin = () => (window.Capacitor?.isNativePlatform?.() ? window.Capacitor.Plugins?.LocalNotifications : null);
   let enabled = true;
   try { enabled = localStorage.getItem(KEY) !== 'off'; } catch { /* stays on */ }
@@ -53,5 +53,10 @@ const Notify = (() => {
     if (on) await granted(true).catch(() => false);
     else await clear();
   }
-  return { available: () => !!plugin(), enabled: () => enabled, setEnabled, askOnce, plan, clear };
+  return {
+    available: () => !!plugin(), enabled: () => enabled, setEnabled, askOnce, plan, clear,
+    allowed: () => granted(false).catch(() => false),
+    ask: () => granted(true).catch(() => false),
+    pending: async () => (await plugin()?.getPending?.())?.notifications || [],
+  };
 })();
