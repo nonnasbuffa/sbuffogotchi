@@ -3195,7 +3195,7 @@ const Game = (() => {
   // A console like the ones in PC games, only for players in admin mode (unlocked with the code in Friends):
   // ` or F11 opens it, or Settings on phones. For everyone else those keys do nothing here.
   // Every change it makes is saved and sent to the server at once, as the player's real data.
-  const GAME_VERSION = '1.8.0';
+  const GAME_VERSION = '1.8.1';
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const isAdmin = () => !!S.cheats?.unlocked;
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
@@ -3245,9 +3245,12 @@ const Game = (() => {
   }
   // After any change: marked as a terminal edit (so it wins over older copies), saved and sent to the server now.
   function changed() { S.editedAt = Date.now(); tick(); S.tickAt = Date.now(); save(); sync(); render(); if ($('s-shop').classList.contains('on')) renderShop(); }
-  // Changes are written with full paths that start with get., like a real console:
-  //   get.items.poken = 500   get.items.pizza += 3   get.stats.food = 100
-  //   get.cds.sbuff_n_base = true   get.skins.babbo = true   get.achievements.<id> = true
+  // The terminal speaks in verbs:
+  //   set.items.poken = 500   set.items.pizza = +3   set.stats.joy = 100   set.sbuffling.name = "Nonna"
+  //   set.cheats.god = true                      (change a value)
+  //   get.cds = sbuff_n_base   get.skins = boxer   get.achievements = level25   (get something)
+  //   remove.cds = sbuff_n_base   ...            (take it away)
+  //   show items.poken   show.stats.streak       (just look)
   // The value must have the right type: a number where a number goes, true/false where that goes.
   const STATS = ['food', 'energy', 'joy', 'level', 'xp', 'str', 'streak', 'bossWins'];
   function typedValue(raw, kind, path) {
@@ -3267,11 +3270,12 @@ const Game = (() => {
     }
     return undefined;
   }
-  // Works out what a get.* path points at: how to read it, how to write it, and its type.
+  // Works out what a path like items.poken points at: how to read it, how to write it, and its type.
+  const OWNABLE = ['cds', 'skins', 'achievements'];
   function resolve(path) {
     const parts = path.split('.');
-    if (parts[0] !== 'get' || parts.length < 3) return null;
-    const [, group, ...rest] = parts;
+    if (parts.length < 2) return null;
+    const [group, ...rest] = parts;
     const key = rest.join('.');
     if (group === 'items') {
       if (key === 'poken') return { kind: 'number', read: () => S.poken || 0, write: (v) => { S.poken = v; } };
@@ -3282,7 +3286,7 @@ const Game = (() => {
       if (!STATS.includes(key)) return null;
       return { kind: 'number', read: () => S[key], write: (v) => { S[key] = v; } };
     }
-    if (group === 'pet' && key === 'name') return { kind: 'string', read: () => petName(), write: (v) => { S.petName = v; } };
+    if (group === 'sbuffling' && key === 'name') return { kind: 'string', read: () => petName(), write: (v) => { S.petName = v; } };
     if (group === 'cds') {
       const cd = findCd(key); if (!cd) return null;
       return { kind: 'boolean', read: () => (S.cds || []).includes(cd.id),
@@ -3316,19 +3320,42 @@ const Game = (() => {
   function assign(left, op, raw) {
     const path = left.trim();
     if ((/^color[_.-](\w+)$/i).test(path)) return runCommand(`color ${path.split(/[_.-]/)[1]} ${raw}`);
-    if (!path.startsWith('get.')) return termPrint(t('tm_notGet', { path }), 'err');
-    const slot = resolve(path);
+    const [verb, ...restParts] = path.split('.');
+    const target = restParts.join('.');
+    // get.cds = <name> gives it, remove.cds = <name> takes it away.
+    if (verb === 'get' || verb === 'remove') {
+      if (!OWNABLE.includes(target)) return termPrint(t('tm_ownOnly', { path }), 'err');
+      const name = raw.trim().replace(/^['"]|['"]$/g, '');
+      const slot = resolve(`${target}.${name}`);
+      if (!slot) return termPrint(t('tm_noPath', { path: `${target}.${name}` }), 'err');
+      slot.write(verb === 'get');
+      changed();
+      if (target === 'achievements') checkAchievements();
+      return termPrint(t(verb === 'get' ? 'tm_got' : 'tm_removed', { x: name, g: target }), 'ok');
+    }
+    if (verb !== 'set') return termPrint(t('tm_notGet', { path }), 'err');
+    if (OWNABLE.includes(restParts[0])) return termPrint(t('tm_useGet', { g: restParts[0] }), 'err');
+    const slot = resolve(target);
     if (!slot) return termPrint(t('tm_noPath', { path }), 'err');
     if (op !== '=' && slot.kind !== 'number') return termPrint(t('tm_onlyNumbers', { op }), 'err');
     const value = typedValue(raw, slot.kind, path);
     if (value === undefined) return;
-    
     // "= +x" / "= -x" (or just "+x" / "-x" after the path) add or take away x; a plain number replaces the value.
     const relative = slot.kind === 'number' && /^[+-]/.test(raw.trim());
+    tick(); // bars drain first, so what you set is exactly what you get
     const next = op === '+=' ? slot.read() + value : op === '-=' ? slot.read() - value : relative ? slot.read() + value : value;
     slot.write(next);
     changed();
     termPrint(`${path} = ${JSON.stringify(slot.read())}`, 'ok');
+  }
+  // show <path> / show.<path>: prints a value (items.poken, stats.joy, sbuffling.name...) or any part of her save.
+  function showPath(path) {
+    const p = path.trim().replace(/^S\./, '');
+    if (OWNABLE.includes(p)) return COMMANDS.ls(p);
+    const slot = resolve(p);
+    if (slot) return termPrint(`${p} = ${JSON.stringify(slot.read())}`);
+    const v = getPath(p);
+    termPrint(v === undefined ? t('tm_noPath', { path: p }) : JSON.stringify(v, null, 2), v === undefined ? 'err' : '');
   }
 
   // --- screens and windows that 'open' knows ---
@@ -3430,22 +3457,22 @@ const Game = (() => {
 
   // --- commands ---
   // The commands (left) stay in English; their descriptions (grey) follow the game's language.
+  // The commands (left) stay in English; their descriptions (grey) follow the game's language.
   const HELP = [
-    ['help', 'h_help'], ['sbuffofetch / neofetch', 'h_fetch'],
-    ['open <screen>', 'h_open'], ['close', 'h_close'],
-    ['ls [state|items|cds|skins|achievements|screens]', 'h_ls'], ['get <path> / <path>', 'h_get'],
-    ['get.items.<item> = <number>', 'h_items'],
-    ['get.stats.<food|energy|joy|level|xp|str|streak|bossWins> = <number>', 'h_stats'],
-    ['get.cds.<cd> = true|false', 'h_cds'],
-    ['get.pet.name = "<text>"', 'h_petName'],
-    ['color <btn|win|outline1|outline2|text|glow> <#hex>', 'h_color'],
-    ['look modern|classic|2d|3d', 'h_look'], ['name <text>', 'h_rename'], ['say <text>', 'h_say'],
+    ['help', 'h_help'], ['sbuffofetch', 'h_fetch'], ['clear', 'h_clear'], ['close', 'h_close'], ['lock', 'h_lock'],
+    ['set.items.<item> = <number>', 'h_items'],
+    ['set.stats.<food|energy|joy|level|xp|str|streak|bossWins> = <number>', 'h_stats'],
+    ['set.sbuffling.name = "<text>"', 'h_petName'],
+    ['set.cheats.<god|oneShot|invincible> = true|false', 'h_cheats'],
+    ['get.<cds|skins|achievements> = <name>', 'h_get'],
+    ['remove.<cds|skins|achievements> = <name>', 'h_remove'],
+    ['give <item> [n]', 'h_give'], ['fill', 'h_fill'], ['golden', 'h_golden'],
+    ['show <path>', 'h_show'], ['ls [items|cds|skins|achievements|screens|state]', 'h_ls'], ['cat save', 'h_cat'],
+    ['open <screen>', 'h_open'],
+    ['look modern|classic|2d|3d', 'h_look'], ['color <btn|win|outline1|outline2|text|glow> <#hex>', 'h_color'],
     ['lang en|es|it', 'h_lang'], ['music on|off', 'h_music'], ['play <cd> / stop', 'h_play'],
-    ['give <item> [n]', 'h_give'], ['fill', 'h_fill'],
-    ['toast <text>', 'h_toast'], ['golden', 'h_golden'],
-    ['get.cheats.<god|oneShot|invincible> = true|false', 'h_cheats'], ['lock', 'h_lock'],
-    ['cat save', 'h_cat'], ['js <code>', 'h_js'],
-    ['history, clear, echo, date, whoami, uname -a, reboot', 'h_usual'],
+    ['say <text>', 'h_say'], ['toast <text>', 'h_toast'], ['js <code>', 'h_js'],
+    ['history, echo, date, whoami, uname -a, pwd, reboot', 'h_usual'],
   ];
   const COMMANDS = {
     help() { for (const [c, d] of HELP) termHtml(`<span class="tp">${esc(c)}</span>  <span class="dim">${esc(t(d, { list: Object.keys(OPENERS).join(', ') }))}</span>`); },
@@ -3481,7 +3508,7 @@ const Game = (() => {
       if (obj && typeof obj === 'object') return Object.keys(obj).forEach((k) => termPrint(`${k.padEnd(14)} ${typeof obj[k] === 'object' ? (Array.isArray(obj[k]) ? `[${obj[k].length}]` : '{…}') : JSON.stringify(obj[k])}`));
       termPrint(t('tm_lsNothing', { x: what }), 'err');
     },
-    get(rest) { const v = getPath(rest.replace(/^S\./, '')); termPrint(v === undefined ? `${rest}: undefined` : JSON.stringify(v, null, 2)); },
+    show: (rest) => showPath(rest),
     cat(rest) { if (/save/.test(rest)) termPrint(JSON.stringify(S, null, 2)); else termPrint(t('tm_catTry', { x: rest }), 'err'); },
     set(rest) { const m = rest.match(/^(\S+)\s+(.*)$/); if (!m) return termPrint(t('tm_usage', { x: 'set <path> <value>' }), 'err'); assign(m[1], '=', m[2]); },
     color(rest) {
@@ -3538,16 +3565,15 @@ const Game = (() => {
     if (!text) return;
     const m = text.match(/^([\w.\-[\]]+)\s*(\+=|-=|=)\s*(.*)$/);
     if (m && !COMMANDS[m[1]]) return assign(m[1], m[2], m[3]);
-    const rel = text.match(/^(get\.[\w.\-]+)\s+([+-]\s*\S+)$/);
+    const rel = text.match(/^(set\.[\w.\-]+)\s+([+-]\s*\S+)$/);
     if (rel) return assign(rel[1], '=', rel[2].replace(/\s+/g, ''));
     const [cmd, ...restParts] = text.split(/\s+/);
     const rest = text.slice(cmd.length).trim();
     const fn = COMMANDS[cmd.toLowerCase()];
     if (fn) return fn(rest, restParts);
-    const slot = text.startsWith('get.') && resolve(text);
-    if (slot) return termPrint(`${text} = ${JSON.stringify(slot.read())}`);
+    if (text.startsWith('show.')) return showPath(text.slice(5));
     // A bare path prints its value, like a console variable.
-    if (getPath(text.replace(/^S\./, '')) !== undefined) return COMMANDS.get(text);
+    if (resolve(text) || getPath(text.replace(/^S\./, '')) !== undefined) return showPath(text);
     termPrint(t('tm_notFound', { x: cmd }), 'err');
   }
   $('termIn').addEventListener('keydown', (e) => {
