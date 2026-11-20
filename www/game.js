@@ -202,6 +202,7 @@ const Game = (() => {
   // ----- screens -----
   function show(name) {
     if (name !== 'whack') window.Games3D?.whack.stop();
+    if (name !== 'boss') window.Games3D?.boss.stop();
     document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('on', s.id === `s-${name}`));
     Music.play({ train: 'action', whack: 'action', order: 'action', mini: 'action', boss: 'boss' }[name] || 'home');
     if (name === 'home') { render(); play($('pet'), restingAnim()); setTimeout(showNextGift, 300); }
@@ -2130,6 +2131,16 @@ const Game = (() => {
         c.fillStyle = '#9be35a';
         for (let i = 0; i < 4; i++) c.fillRect(kx + 24 + i * 16, ky + 63 + Math.random() * 6, 6, 6 + Math.random() * 8);
       }
+      this.hud(g, c);
+    },
+    // A real 3D race in the 3D look; the item slot and messages are drawn on top as usual.
+    draw3d(g, c) {
+      const rival = g.duel && (SKINS.find((s) => s.dir === g.duel.rivalSkin) || SKINS[0]).id;
+      Games3D.frame('race', g, c, MINI_W, MINI_H, { track: WU_TRACK, WU, look: skinNow().id, rivalLook: rival });
+      this.hud(g, c);
+    },
+    hud(g, c) {
+      const me = g.me;
       // Item slot, messages and the countdown.
       c.fillStyle = '#231d33cc'; c.fillRect(MINI_W - 58, 8, 50, 50);
       c.strokeStyle = '#ffc857'; c.lineWidth = 2; c.strokeRect(MINI_W - 58, 8, 50, 50);
@@ -2406,6 +2417,9 @@ const Game = (() => {
     setFightButton();
     $('bossInfo').textContent = t('spam');
     show('boss'); play($('fightPet'), 'battle');
+    if (window.Games3D && use3d()) {
+      Games3D.boss.start($('bossArt').parentElement, b.art, () => ({ bowl: $('bowl').classList.contains('on'), stage: parseFloat($('bowl').style.backgroundPositionX) || 0 }));
+    }
     renderFight(); queueBossAttack();
   }
   function renderFight() {
@@ -2433,6 +2447,7 @@ const Game = (() => {
     fight.hitsLeft -= 1;
     if (!cheat('god')) fight.you = Math.max(0, fight.you - fight.hitDamage);
     $('bossArt').animate([{ translate: '0' }, { translate: '-46px' }, { translate: '0' }], { duration: 220 });
+    window.Games3D?.boss.strike();
     $('fightPet').parentElement.animate([{ translate: '0' }, { translate: '-8px' }, { translate: '8px' }, { translate: '0' }], { duration: 220 });
     renderFight();
     if (fight.you <= 0) return endBoss(false);
@@ -2470,6 +2485,7 @@ const Game = (() => {
     num.onanimationend = () => num.remove();
     $('bossArt').parentElement.append(num);
     $('bossArt').animate([{ translate: '0' }, { translate: '5px' }, { translate: '0' }], { duration: 90 });
+    window.Games3D?.boss.hit();
     renderFight();
     if (fight.hp <= 0) endBoss(true);
   }
@@ -3253,7 +3269,7 @@ const Game = (() => {
   // A console like the ones in PC games: ` or F11 opens it (or the admin panel, on phones).
   // Anyone can look around, open screens and change colours; changing the game itself needs
   // sv_cheats 1, which anyone can type (if they know it). `js` runs any JavaScript at all.
-  const GAME_VERSION = '1.6.0';
+  const GAME_VERSION = '1.7.0';
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const svCheats = () => S.svCheats === true;
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);

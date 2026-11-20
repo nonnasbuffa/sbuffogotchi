@@ -459,15 +459,506 @@ window.Games3D = (() => {
     };
   }
 
+  // ----- bosses: a garden arena behind the fight, with the boss as a big angry veggie -----
+  // Faces for the bosses: white eyes with pupils, angry eyebrows, a frown. Positions are per veggie.
+  const BOSS_FACE = { broccoli: [0.27, 0.15], carrot: [0.42, 0.14], sprout: [0.3, 0.24], eggplant: [0.42, 0.2] };
+  const BOSS_BODY = { broccoli: broccoli, carrot, sprout, eggplant };
+  const BOSS_LIMB = { broccoli: '#9fcf6a', carrot: '#ef7f2d', sprout: '#7fbf4f', eggplant: '#6b3f8f' };
+  function bossModel(art) {
+    const s = 2.6;
+    const holder = new T.Group();
+    const body = (BOSS_BODY[art] || broccoli)(s);
+    body.position.y = 0.42;
+    holder.add(body);
+    const [fy, fz] = BOSS_FACE[art] || BOSS_FACE.broccoli;
+    const y = fy * s + 0.42, z = fz * s;
+    const white = std('#ffffff', 0.3), dark = std('#1d1a22', 0.3);
+    for (const side of [-1, 1]) {
+      const eye = new T.Mesh(new T.SphereGeometry(0.13, 16, 12), white);
+      eye.position.set(side * 0.18, y, z);
+      eye.scale.set(1, 1.2, 0.5);
+      const pupil = new T.Mesh(new T.SphereGeometry(0.065, 12, 10), dark);
+      pupil.position.set(side * 0.16, y - 0.02, z + 0.06);
+      // Angry eyebrows slanting down towards the middle.
+      const brow = new T.Mesh(new T.CapsuleGeometry(0.035, 0.18, 4, 8), dark);
+      brow.position.set(side * 0.19, y + 0.2, z + 0.04);
+      brow.rotation.z = Math.PI / 2 + side * 0.45;
+      holder.add(eye, pupil, brow);
+    }
+    const mouth = new T.Mesh(new T.TorusGeometry(0.12, 0.03, 8, 20, Math.PI), dark);
+    mouth.position.set(0, y - 0.26, z + 0.02);
+    holder.add(mouth);
+    // Stubby arms and legs, like hers.
+    const limb = std(BOSS_LIMB[art] || '#9fcf6a', 0.55);
+    const arms = [];
+    for (const side of [-1, 1]) {
+      const arm = new T.Group();
+      arm.position.set(side * 0.62, 0.95, 0.05);
+      const a = new T.Mesh(new T.CapsuleGeometry(0.09, 0.3, 4, 10), limb);
+      a.position.y = -0.18;
+      const fist = new T.Mesh(new T.SphereGeometry(0.13, 14, 10), limb);
+      fist.position.y = -0.42;
+      arm.add(a, fist);
+      arm.rotation.z = side * 0.5;
+      holder.add(arm);
+      arms.push(arm);
+      const leg = new T.Mesh(new T.CapsuleGeometry(0.1, 0.2, 4, 10), limb);
+      leg.position.set(side * 0.22, 0.2, 0);
+      const foot = new T.Mesh(new T.SphereGeometry(0.15, 14, 10), dark);
+      foot.position.set(side * 0.22, 0.06, 0.08);
+      foot.scale.set(1, 0.6, 1.3);
+      holder.add(leg, foot);
+    }
+    holder.userData.arms = arms;
+    holder.userData.body = body;
+    return holder;
+  }
+  const boss = (() => {
+    let st = null;
+    function start(stage, art, read) {
+      stop();
+      const r = new T.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'low-power', preserveDrawingBuffer: true });
+      r.outputColorSpace = T.SRGBColorSpace;
+      r.toneMapping = T.ACESFilmicToneMapping;
+      r.toneMappingExposure = 1.1;
+      r.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+      const c = r.domElement;
+      c.className = 'boss3d';
+      stage.prepend(c);
+      stage.classList.add('is3d');
+      const scene = new T.Scene();
+      scene.background = canvasTex(16, 256, (g, w, h) => {
+        const grad = g.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, '#2b1f4a'); grad.addColorStop(0.55, '#c0587a'); grad.addColorStop(1, '#f6b16b');
+        g.fillStyle = grad; g.fillRect(0, 0, w, h);
+      });
+      lights(scene, 0xffe2c8, 0x40305a, 2.4);
+      const rim = new T.DirectionalLight(0xff9a7a, 1.6);
+      rim.position.set(-3, 3, -4);
+      scene.add(rim);
+      // A grassy clearing at sunset, with a hedge behind and a couple of lanterns.
+      const grass = canvasTex(256, 256, (g) => {
+        g.fillStyle = '#4f8a3c'; g.fillRect(0, 0, 256, 256);
+        for (let i = 0; i < 2400; i++) { g.fillStyle = rnd() < 0.5 ? 'rgba(30,70,25,.5)' : 'rgba(130,190,80,.35)'; g.fillRect(rnd() * 256, rnd() * 256, 2, 5); }
+      }, [8, 4]);
+      const ground = new T.Mesh(new T.PlaneGeometry(40, 20), std(0xffffff, 0.95, { map: grass }));
+      ground.rotation.x = -Math.PI / 2;
+      scene.add(ground);
+      const hedge = new T.InstancedMesh(new T.IcosahedronGeometry(0.9, 1), std('#2f6b3f', 0.85), 40);
+      const m4 = new T.Matrix4(), q = new T.Quaternion();
+      for (let i = 0; i < 40; i++) {
+        const s = 0.8 + rnd() * 0.6;
+        m4.compose(new T.Vector3(-16 + i * 0.85, 0.5 + rnd() * 0.5, -5 - rnd() * 0.8), q, new T.Vector3(s, s, s));
+        hedge.setMatrixAt(i, m4);
+      }
+      scene.add(hedge);
+      for (const x of [-5.5, 5.5]) {
+        const post = new T.Mesh(new T.CylinderGeometry(0.06, 0.06, 2.4, 10), std('#3a2a22', 0.6));
+        post.position.set(x, 1.2, -3.2);
+        const glow = new T.Mesh(new T.SphereGeometry(0.22, 16, 12), std('#ffd27a', 0.3, { emissive: '#ffb84a', emissiveIntensity: 1.6 }));
+        glow.position.set(x, 2.5, -3.2);
+        const light = new T.PointLight(0xffb86a, 3, 6, 1.5);
+        light.position.copy(glow.position);
+        scene.add(post, glow, light);
+      }
+      const camera = new T.PerspectiveCamera(38, 2, 0.1, 100);
+      camera.position.set(0, 2.4, 9);
+      camera.lookAt(0, 1.45, 0);
+      const foe = bossModel(art);
+      const foeShadow = shadow(1);
+      scene.add(foe, foeShadow);
+      // The poke bowl she eats during the boss's attack: it empties in three bites' worth of stages.
+      const meal = bowl(0.95);
+      meal.visible = false;
+      scene.add(meal);
+      st = { r, c, scene, camera, foe, foeShadow, meal, stage, read, raf: 0, size: '', hitAt: -9, strikeAt: -9, home: new T.Vector3(2.6, 0, 0) };
+      const ray = new T.Raycaster(), plane = new T.Plane(new T.Vector3(0, 1, 0), 0), hit = new T.Vector3();
+      const step = () => {
+        if (!st || !stage.offsetParent) return;
+        const sr = stage.getBoundingClientRect();
+        const size = `${Math.round(sr.width)}x${Math.round(sr.height)}`;
+        if (size !== st.size) {
+          st.size = size;
+          r.setSize(sr.width, sr.height, false);
+          camera.aspect = sr.width / sr.height;
+          camera.updateProjectionMatrix();
+          camera.updateMatrixWorld();
+          // The boss stands where its picture would be, and the bowl where the 2D bowl sits.
+          const at = (el) => {
+            const er = el.getBoundingClientRect();
+            const nx = ((er.left + er.width / 2 - sr.left) / sr.width) * 2 - 1;
+            const ny = -(((er.bottom - 4 - sr.top) / sr.height) * 2 - 1);
+            ray.setFromCamera(new T.Vector2(nx, ny), camera);
+            return ray.ray.intersectPlane(plane, hit) ? hit.clone() : null;
+          };
+          const b = at(stage.querySelector('#bossArt'));
+          if (b) st.home.copy(b);
+          const m = at(stage.querySelector('#bowl'));
+          if (m) meal.position.copy(m).add(new T.Vector3(0, 0, 0.8));
+        }
+        const now = performance.now() / 1000;
+        const s = read() || {};
+        const sinceHit = now - st.hitAt, sinceStrike = now - st.strikeAt;
+        foe.position.copy(st.home);
+        foe.rotation.set(0, -0.3, 0);
+        foe.scale.set(1, 1, 1);
+        // Menacing bob, a lunge at her when it strikes, a flinch when she hits it.
+        const breathe = Math.sin(now * 3);
+        foe.position.y = Math.abs(Math.sin(now * 3)) * 0.06;
+        foe.userData.body.scale.set(1 + breathe * 0.02, 1 - breathe * 0.02, 1);
+        foe.userData.arms.forEach((a, i) => { a.rotation.x = Math.sin(now * 6 + i * Math.PI) * 0.3; });
+        if (sinceStrike < 0.25) {
+          const k = Math.sin((sinceStrike / 0.25) * Math.PI);
+          foe.position.x -= k * 1.4;
+          foe.rotation.z = k * 0.25;
+          foe.userData.arms.forEach((a) => { a.rotation.x = -1.6 * k; });
+        }
+        if (sinceHit < 0.12) {
+          const k = Math.sin((sinceHit / 0.12) * Math.PI);
+          foe.position.x += k * 0.15;
+          foe.scale.set(1 + k * 0.08, 1 - k * 0.1, 1 + k * 0.08);
+        }
+        foeShadow.position.set(foe.position.x, 0.01, foe.position.z);
+        meal.visible = !!s.bowl;
+        if (s.bowl) {
+          const left = 1 - Math.min(1, (s.stage || 0) / 100);
+          meal.children.forEach((m, i) => { if (i > 0) m.visible = left > 0.05; });
+          meal.children[1].scale.set(1, Math.max(0.05, 0.6 * left), 1);
+        }
+        r.render(scene, camera);
+      };
+      const loop = () => { if (!st) return; st.raf = requestAnimationFrame(loop); step(); };
+      st.step = step;
+      loop();
+    }
+    function stop() {
+      if (!st) return;
+      cancelAnimationFrame(st.raf);
+      st.r.dispose();
+      st.c.remove();
+      st.stage.classList.remove('is3d');
+      st = null;
+    }
+    return {
+      start, stop,
+      hit() { if (st) st.hitAt = performance.now() / 1000; },
+      strike() { if (st) st.strikeAt = performance.now() / 1000; },
+      step: () => st?.step(),
+    };
+  })();
+
+  // ----- Wipe-Uff: a real 3D garden circuit -----
+  // The race keeps its own rules (distance along the track, sideways position, laps); here the circuit's
+  // bends and hills become a 3D road. Three laps' worth are laid end to end (the one behind, the current
+  // one and the next) so the road ahead and behind always exists, and karts are placed on the nearest copy.
+  const RACE_SCALE = 200; // the race's own units per 3D unit: one track segment is 1 unit long
+  const TURN = 1.6; // how sharply the bends turn
+  function raceTextures() {
+    const road = canvasTex(128, 256, (g, w, h) => {
+      g.fillStyle = '#c8a46c'; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 1600; i++) { g.fillStyle = rnd() < 0.5 ? 'rgba(90,60,30,.12)' : 'rgba(255,240,210,.12)'; g.fillRect(rnd() * w, rnd() * h, 2, 2); }
+      g.fillStyle = '#efe2c2'; g.fillRect(w / 2 - 3, 0, 6, h / 2); // the dashed middle line
+    });
+    road.wrapS = road.wrapT = T.RepeatWrapping;
+    const rumble = canvasTex(16, 64, (g, w, h) => {
+      g.fillStyle = '#d94c3c'; g.fillRect(0, 0, w, h / 2);
+      g.fillStyle = '#f6eedd'; g.fillRect(0, h / 2, w, h / 2);
+    });
+    rumble.wrapS = rumble.wrapT = T.RepeatWrapping;
+    const grass = canvasTex(64, 64, (g, w, h) => {
+      g.fillStyle = '#62b04f'; g.fillRect(0, 0, w, h / 2);
+      g.fillStyle = '#6fbf5a'; g.fillRect(0, h / 2, w, h / 2);
+      for (let i = 0; i < 300; i++) { g.fillStyle = 'rgba(40,90,30,.25)'; g.fillRect(rnd() * w, rnd() * h, 1, 3); }
+    });
+    grass.wrapS = grass.wrapT = T.RepeatWrapping;
+    const crate = canvasTex(64, 64, (g) => {
+      g.fillStyle = '#f2b53a'; g.fillRect(0, 0, 64, 64);
+      g.strokeStyle = '#b5761e'; g.lineWidth = 6; g.strokeRect(3, 3, 58, 58);
+      g.fillStyle = '#ffffff'; g.font = 'bold 40px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('?', 32, 35);
+    });
+    const checker = canvasTex(64, 16, (g) => {
+      for (let x = 0; x < 8; x++) for (let y = 0; y < 2; y++) { g.fillStyle = (x + y) % 2 ? '#222' : '#fff'; g.fillRect(x * 8, y * 8, 8, 8); }
+    });
+    checker.magFilter = T.NearestFilter;
+    return { road, rumble, grass, crate, checker };
+  }
+  // Garden scenery, each built once and copied along the track.
+  function sceneryModels() {
+    const m = {};
+    const cab = new T.Group();
+    const head = new T.Mesh(new T.SphereGeometry(1.2, 20, 14), std('#b9df8a', 0.6));
+    head.position.y = 1.0; head.scale.y = 0.85;
+    cab.add(head);
+    for (let i = 0; i < 6; i++) {
+      const l = new T.Mesh(new T.SphereGeometry(0.9, 14, 10), std('#7fbf4f', 0.7));
+      const a = (i / 6) * Math.PI * 2;
+      l.position.set(Math.cos(a) * 1.1, 0.5, Math.sin(a) * 1.1);
+      l.scale.set(1, 0.45, 1);
+      cab.add(l);
+    }
+    m.cabbage = cab;
+    const tom = new T.Group();
+    const bush = new T.Mesh(new T.IcosahedronGeometry(1.1, 1), std('#4f9a4a', 0.8));
+    bush.position.y = 1.3;
+    tom.add(bush);
+    const stake = new T.Mesh(new T.CylinderGeometry(0.06, 0.06, 3, 8), std('#8a6a44', 0.7));
+    stake.position.y = 1.5;
+    tom.add(stake);
+    for (const [x, y, z] of [[0.8, 1.2, 0.5], [-0.7, 1.6, 0.6], [0.2, 0.8, 0.9], [-0.4, 1.0, -0.8]]) {
+      const tm = new T.Mesh(new T.SphereGeometry(0.3, 14, 10), std('#e2462e', 0.35));
+      tm.position.set(x, y, z);
+      tom.add(tm);
+    }
+    m.tomato = tom;
+    const sun = new T.Group();
+    const stem = new T.Mesh(new T.CylinderGeometry(0.1, 0.14, 4, 8), std('#5f9a3a', 0.7));
+    stem.position.y = 2;
+    const disc = new T.Group();
+    disc.position.set(0, 4.1, 0.15);
+    for (let i = 0; i < 14; i++) {
+      const p = new T.Mesh(new T.SphereGeometry(0.32, 10, 8), std('#ffd23a', 0.5));
+      const a = (i / 14) * Math.PI * 2;
+      p.position.set(Math.cos(a) * 0.8, Math.sin(a) * 0.8, 0);
+      p.scale.set(1, 0.5, 0.25); p.rotation.z = a;
+      disc.add(p);
+    }
+    const centre = new T.Mesh(new T.CylinderGeometry(0.6, 0.6, 0.2, 20), std('#6b3f22', 0.8));
+    centre.rotation.x = Math.PI / 2;
+    disc.add(centre);
+    sun.add(stem, disc);
+    m.sunflower = sun;
+    const car = new T.Group();
+    for (let i = 0; i < 4; i++) {
+      const top = new T.Mesh(new T.ConeGeometry(0.22, 0.25, 12), std('#ef7f2d', 0.5));
+      top.position.set(-1.5 + i, 0.1, 0);
+      const leaves = new T.Mesh(new T.ConeGeometry(0.3, 0.9, 6), std('#4f9a4a', 0.6));
+      leaves.position.set(-1.5 + i, 0.65, 0);
+      car.add(top, leaves);
+    }
+    const soil = new T.Mesh(new T.BoxGeometry(4.2, 0.12, 0.9), std('#6b4a32', 0.95));
+    car.add(soil);
+    m.carrots = car;
+    const fence = new T.Group();
+    const wood = std('#b8895a', 0.7);
+    for (const z of [-2.5, 0, 2.5]) { const p = new T.Mesh(new T.BoxGeometry(0.2, 1.4, 0.2), wood); p.position.set(0, 0.7, z); fence.add(p); }
+    for (const y of [0.5, 1.05]) { const r = new T.Mesh(new T.BoxGeometry(0.1, 0.16, 5.4), wood); r.position.set(0, y, 0); fence.add(r); }
+    m.fence = fence;
+    return m;
+  }
+  function kart(rider) {
+    const g = new T.Group();
+    const body = bowl(1.35);
+    body.children.slice(1).forEach((c) => { c.visible = false; }); // no rice in the kart bowl, she sits in it
+    body.position.y = 0.45;
+    g.add(body);
+    const tyre = std('#26222c', 0.7);
+    for (const [x, z] of [[-1.15, 0.8], [1.15, 0.8], [-1.15, -0.8], [1.15, -0.8]]) {
+      const w = new T.Mesh(new T.CylinderGeometry(0.42, 0.42, 0.35, 18), tyre);
+      w.rotation.z = Math.PI / 2;
+      w.position.set(x, 0.42, z);
+      g.add(w);
+    }
+    rider.position.y = 0.55;
+    rider.rotation.y = Math.PI; // facing down the road, so the chase camera sees her from behind
+    g.add(rider);
+    const sh = shadow(1.8);
+    sh.position.y = 0.02;
+    g.add(sh);
+    return g;
+  }
+  function chiliModel() {
+    const g = new T.Group();
+    const b = new T.Mesh(new T.CapsuleGeometry(0.3, 1.1, 6, 12), std('#d8322a', 0.3));
+    b.rotation.x = Math.PI / 2;
+    const cap = new T.Mesh(new T.ConeGeometry(0.22, 0.4, 10), std('#4f9a4a', 0.6));
+    cap.rotation.x = Math.PI / 2; cap.position.z = 0.85;
+    g.add(b, cap);
+    return g;
+  }
+  function buildRace(W, H, o) {
+    const { track, WU } = o;
+    const segs = track.segs, N = segs.length;
+    const HW = WU.ROAD / RACE_SCALE; // half the road's width
+    const scene = new T.Scene();
+    scene.background = canvasTex(16, 256, (g, w, h) => {
+      const grad = g.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0, '#5fb4ee'); grad.addColorStop(0.55, '#bfe4fa'); grad.addColorStop(1, '#d6ecf6');
+      g.fillStyle = grad; g.fillRect(0, 0, w, h);
+    });
+    scene.fog = new T.Fog('#d6ecf6', 45, 150);
+    lights(scene, 0xffffff, 0x6a8a5a, 2.2);
+    // Lay out three laps of centreline: positions, headings and heights.
+    const total = N * 3;
+    const P = new Array(total + 1), Hd = new Array(total + 1), Y = new Array(total + 1);
+    const fwd = (h) => new T.Vector3(Math.sin(h), 0, -Math.cos(h));
+    P[N] = new T.Vector3(0, 0, 0); Hd[N] = 0;
+    for (let j = N; j < total; j++) { Hd[j + 1] = Hd[j] + (segs[j % N].curve / RACE_SCALE) * TURN; P[j + 1] = P[j].clone().add(fwd(Hd[j])); }
+    for (let j = N; j > 0; j--) { Hd[j - 1] = Hd[j] - (segs[(j - 1) % N].curve / RACE_SCALE) * TURN; P[j - 1] = P[j].clone().sub(fwd(Hd[j - 1])); }
+    for (let j = 0; j <= total; j++) Y[j] = segs[j % N].p1.y / RACE_SCALE;
+    const right = (h) => new T.Vector3(Math.cos(h), 0, Math.sin(h));
+    // A strip running along the track between two sideways offsets, with its texture repeating every few segments.
+    function ribbon(from, to, map, repeatV, rough = 0.9, lift = 0) {
+      const pos = [], uv = [], idx = [];
+      for (let j = 0; j <= total; j++) {
+        const r = right(Hd[j]);
+        for (const [k, side] of [[0, from], [1, to]]) {
+          const p = P[j].clone().addScaledVector(r, side);
+          pos.push(p.x, Y[j] + lift, p.z);
+          uv.push(k, j / repeatV);
+        }
+        if (j < total) { const a = j * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+      }
+      const geo = new T.BufferGeometry();
+      geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+      geo.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
+      geo.setIndex(idx);
+      geo.computeVertexNormals();
+      const mesh = new T.Mesh(geo, std(0xffffff, rough, { map, side: T.DoubleSide }));
+      scene.add(mesh);
+      return mesh;
+    }
+    const tx = raceTextures();
+    ribbon(-HW, HW, tx.road, 6, 0.95, 0.02);
+    ribbon(-HW * 1.12, -HW, tx.rumble, 6, 0.6, 0.03);
+    ribbon(HW, HW * 1.12, tx.rumble, 6, 0.6, 0.03);
+    ribbon(-HW * 6, -HW * 1.12, tx.grass, 6, 0.95, 0);
+    ribbon(HW * 1.12, HW * 6, tx.grass, 6, 0.95, 0);
+    const ground = new T.Mesh(new T.PlaneGeometry(4000, 4000), std('#62b04f', 1));
+    ground.rotation.x = -Math.PI / 2; ground.position.y = -0.6;
+    scene.add(ground);
+    // Things placed along the track: (segment index on the 3-lap road, sideways offset in road widths).
+    const placeAt = (obj, j, x, lift = 0) => {
+      const i = Math.max(0, Math.min(total - 1, Math.floor(j))), f = j - i;
+      const h = Hd[i] + (Hd[i + 1] - Hd[i]) * f;
+      const p = P[i].clone().lerp(P[i + 1], f).addScaledVector(right(h), x * HW);
+      obj.position.set(p.x, Y[i] + (Y[i + 1] - Y[i]) * f + lift, p.z);
+      obj.rotation.y = -h;
+      return h;
+    };
+    const models = sceneryModels();
+    const props = [];
+    for (let lap = 0; lap < 3; lap++) {
+      for (const s of segs) {
+        const j = s.i + lap * N;
+        for (const sp of s.sprites) {
+          const obj = models[sp.art].clone();
+          placeAt(obj, j, sp.x);
+          if (sp.art === 'carrots') obj.rotation.y += Math.PI / 2;
+          if (sp.art === 'sunflower') obj.rotation.y += sp.x > 0 ? Math.PI / 2 : -Math.PI / 2;
+          scene.add(obj);
+          props.push({ obj, j });
+        }
+      }
+      // Chequered start line.
+      const line = new T.Mesh(new T.PlaneGeometry(HW * 2, 1.4), std(0xffffff, 0.8, { map: tx.checker }));
+      line.rotation.x = -Math.PI / 2;
+      const holder = new T.Group();
+      holder.add(line);
+      placeAt(holder, lap * N + 0.7, 0, 0.05);
+      scene.add(holder);
+    }
+    const crates = [];
+    const crateGeo = new T.BoxGeometry(1.3, 1.3, 1.3), crateMat = std(0xffffff, 0.4, { map: tx.crate, emissive: '#ffb020', emissiveIntensity: 0.25 });
+    for (let lap = 0; lap < 3; lap++) for (const s of segs) for (const b of s.boxes) {
+      const m = new T.Mesh(crateGeo, crateMat);
+      scene.add(m);
+      crates.push({ m, b, j: s.i + lap * N });
+    }
+    // Karts: her, the bots (veggies) or the friend.
+    const karts = new Map();
+    const riderFor = (k) => {
+      if (k.me) { const f = Pet3D.figure(o.look); f.root.scale.setScalar(0.85); return { obj: f.root, pose: f.pose }; }
+      if (k.remote) { const f = Pet3D.figure(o.rivalLook || 'default'); f.root.scale.setScalar(0.85); return { obj: f.root, pose: f.pose }; }
+      const v = (VEGGIES[k.bot?.art] || VEGGIES.broccoli)(2.3);
+      v.position.y = 0.75;
+      return { obj: v, pose: null };
+    };
+    const shots = [], slicks = [];
+    const chili = chiliModel();
+    const slickGeo = new T.CircleGeometry(1.3, 24), slickMat = std('#3a2418', 0.15, { transparent: true, opacity: 0.85 });
+    const flames = new T.Group();
+    for (let i = 0; i < 3; i++) {
+      const f = new T.Mesh(new T.ConeGeometry(0.25, 1.2, 10), std('#9be35a', 0.4, { emissive: '#7fdc3a', emissiveIntensity: 1.4 }));
+      f.rotation.x = -Math.PI / 2; f.position.set(-0.5 + i * 0.5, 0.6, 1.9);
+      flames.add(f);
+    }
+    const camera = new T.PerspectiveCamera(58, W / H, 0.1, 400);
+    // The copy of a racer's spot that is nearest the player.
+    const nearIndex = (z, pj) => {
+      let j = z / RACE_SCALE + N;
+      if (j - pj > N / 2) j -= N;
+      if (pj - j > N / 2) j += N;
+      return j;
+    };
+    return {
+      scene, camera,
+      update(g, time) {
+        const me = g.me;
+        const pj = me.z / RACE_SCALE + N;
+        const lo = pj - 25, hi = pj + 170;
+        for (const p of props) p.obj.visible = p.j > lo && p.j < hi;
+        for (const c of crates) {
+          c.m.visible = !c.b.gone && c.j > lo && c.j < hi;
+          if (c.m.visible) { placeAt(c.m, c.j, c.b.x, 1.4 + Math.sin(time * 4 + c.j) * 0.25); c.m.rotation.y = time * 1.5; c.m.rotation.x = 0.3; }
+        }
+        for (const k of g.racers) {
+          let kt = karts.get(k);
+          if (!kt) {
+            const rider = riderFor(k);
+            kt = { obj: kart(rider.obj), pose: rider.pose };
+            scene.add(kt.obj);
+            karts.set(k, kt);
+          }
+          const j = k.me ? pj : nearIndex(k.z, pj);
+          kt.obj.visible = j > lo && j < hi;
+          placeAt(kt.obj, j, k.x, me.speed > 100 && k.me ? Math.abs(Math.sin(time * 22)) * 0.04 : 0);
+          if (k.spin > 0) kt.obj.rotation.y += time * 18;
+          kt.pose?.(k.spin > 0 ? 'sad' : k.boost > 0 ? 'happy' : 'idle');
+        }
+        // Boost flames behind her kart.
+        const mine = karts.get(me)?.obj;
+        if (mine) {
+          if (flames.parent !== mine) mine.add(flames);
+          flames.visible = me.boost > 0;
+          flames.children.forEach((f, i) => { f.scale.y = 0.7 + Math.random() * 0.6; f.position.z = 1.9 + i * 0.01; });
+        }
+        g.shots.forEach((s, i) => {
+          if (!shots[i]) { shots[i] = chili.clone(); scene.add(shots[i]); }
+          shots[i].visible = true;
+          placeAt(shots[i], nearIndex(s.z, pj), s.x, 1.6);
+          shots[i].rotation.z = time * 12;
+        });
+        shots.forEach((m, i) => { if (i >= g.shots.length) m.visible = false; });
+        g.slicks.forEach((s, i) => {
+          if (!slicks[i]) { slicks[i] = new T.Mesh(slickGeo, slickMat); scene.add(slicks[i]); }
+          const m = slicks[i];
+          m.visible = true;
+          placeAt(m, nearIndex(s.z, pj), s.x, 0.06);
+          m.rotation.x = -Math.PI / 2;
+        });
+        slicks.forEach((m, i) => { if (i >= g.slicks.length) m.visible = false; });
+        // Chase camera: behind and above her kart, looking down the road ahead.
+        const back = new T.Object3D(), ahead = new T.Object3D();
+        const h = placeAt(back, pj - 9, me.x, 5.2);
+        placeAt(ahead, pj + 9, me.x * 0.9, 1.2);
+        camera.position.copy(back.position);
+        camera.lookAt(ahead.position);
+        camera.rotation.z += 0; // keep the horizon level
+        void h;
+      },
+    };
+  }
+
   // ----- drawing a frame into a game's canvas -----
   const scenes = {};
-  const keyOf = (kind, W, H, extra) => `${kind}|${W}|${H}|${extra || ''}`;
+  const keyOf = (kind, W, H, extra, extra2) => `${kind}|${W}|${H}|${extra || ''}|${extra2 || ''}`;
   function frame(kind, g, ctx, W, H, opts = {}) {
-    const key = keyOf(kind, W, H, opts.look);
+    const key = keyOf(kind, W, H, opts.look, opts.rivalLook);
     let s = scenes[kind];
     if (!s || s.key !== key) {
       s = kind === 'pong' ? buildPong(W, H) : kind === 'catch' ? buildCatch(W, H)
-        : kind === 'rhythm' ? buildRhythm(W, H, opts.hitY) : buildParkour(W, H, opts.map, opts.tile, opts.look);
+        : kind === 'rhythm' ? buildRhythm(W, H, opts.hitY) : kind === 'race' ? buildRace(W, H, opts)
+          : buildParkour(W, H, opts.map, opts.tile, opts.look);
       s.key = key;
       scenes[kind] = s;
     }
@@ -587,5 +1078,5 @@ window.Games3D = (() => {
     return { start, stop, step: () => st?.step() };
   })();
 
-  return { frame, whack };
+  return { frame, whack, boss };
 })();

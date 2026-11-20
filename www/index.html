@@ -239,6 +239,11 @@ html:not(.modern) .termLine input{caret-color:var(--gold)}
 .pet3d{position:absolute;inset:0;width:100%;height:100%;image-rendering:auto}
 #miniCanvas.is3d{image-rendering:auto}
 #whackGrid.is3d{position:relative}
+.fight.is3d{background:none}
+.boss3d{position:absolute;inset:0;width:100%;height:100%;z-index:0}
+.fight.is3d #fightPet{position:relative;z-index:1}
+.fight.is3d #bossArt,.fight.is3d #bowl{opacity:0}
+.fight.is3d .hitNum{z-index:3}
 .whack3d{position:absolute;inset:0;width:100%;height:100%;z-index:0;border-radius:14px}
 #whackGrid.is3d .hole{position:relative;z-index:1;background:transparent!important;border-color:transparent!important;box-shadow:none!important;backdrop-filter:none!important}
 #whackGrid.is3d .hole img{opacity:0}
