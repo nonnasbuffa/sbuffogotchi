@@ -155,50 +155,65 @@ button{min-height:58px;font-size:19px}
 @media (min-width:900px) and (min-aspect-ratio:5/4) and (max-height:660px){.infoItems,.infoLine:has(#infoDaily){display:none}#s-home button{min-height:46px;font-size:17px}#s-home .side{gap:6px}#s-home .stats{font-size:18px}}
 
 /* ----- Modern look (Settings → Look). Only restyles the interface; sprites stay pixel art. ----- */
-html.modern{--bg:#120f24;--panel:rgba(58,46,98,.55);--line:rgba(170,150,255,.28);--glow:#8f7bff;--r:18px}
-html.modern body{font-family:system-ui,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;letter-spacing:.1px;
-  background:radial-gradient(60vmax 60vmax at 15% 10%,#3b2a7a 0,transparent 60%),radial-gradient(55vmax 55vmax at 90% 90%,#0f5a63 0,transparent 60%),radial-gradient(40vmax 40vmax at 80% 15%,#6a2357 0,transparent 60%),var(--bg);
-  background-size:140% 140%;background-attachment:fixed;animation:modBg 22s ease-in-out infinite alternate}
-@keyframes modBg{0%{background-position:0% 0%,100% 100%,80% 0%,0 0}100%{background-position:30% 20%,70% 70%,60% 30%,0 0}}
-html.modern h1,html.modern h2{text-shadow:0 0 18px rgba(143,123,255,.65)}
-html.modern .screen.on{animation:modIn .28s ease-out}
-@keyframes modIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-html.modern button:not(.link):not(.hole):not(.pad){border-radius:var(--r);border:1px solid var(--line);
-  background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.02)),var(--panel);
-  box-shadow:0 6px 20px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.14);backdrop-filter:blur(10px);
-  transition:transform .15s,box-shadow .2s,filter .2s}
-html.modern button:not(.link):not(:disabled):hover{box-shadow:0 0 0 1px rgba(170,150,255,.5),0 0 22px rgba(143,123,255,.55),0 6px 20px rgba(0,0,0,.35);filter:brightness(1.08)}
+html.modern{--bg:#0e0d14;--win:rgba(16,15,24,.82);--panel:rgba(16,15,24,.82);--line:rgba(255,255,255,.08);--text:#ece6f5;--dim:#a79fb8;
+  --o1:#f5a3c7;--o2:#b9a3ff;--glowc:#f5a3c7;--pink:var(--o1);--edge:linear-gradient(135deg,var(--o1),var(--o2));--r:14px}
+html.modern,html.modern body{background:transparent}html.modern{background-color:#1b2a1f}
+html.modern body::before{content:"";position:fixed;inset:-60px;z-index:-1;background:url(sprites/room.png) center/cover;filter:blur(28px) saturate(1.8) brightness(.55);animation:hyprDrift 30s ease-in-out infinite alternate}
+@keyframes hyprDrift{to{transform:scale(1.12) translate(2%,1%)}}
+/* Every window: dark glass inside, a thin pink-to-lilac gradient border. */
+html.modern button:not(.link):not(.hole):not(.pad),html.modern .bossRow,html.modern .infoCard,html.modern .day,html.modern .tile,html.modern .friendRow,
+html.modern .panel,html.modern .meter,html.modern input,html.modern .stat,html.modern .bar,html.modern .xp,html.modern .hole,html.modern .pad{
+  border:2px solid transparent;border-radius:var(--r);background:var(--winFill,linear-gradient(var(--win),var(--win))) padding-box,var(--edge) border-box;
+  box-shadow:0 0 10px color-mix(in srgb,var(--glowc) 18%,transparent),0 8px 22px rgba(0,0,0,.35);backdrop-filter:blur(14px)}
+html.modern .stage,html.modern .fight,html.modern #miniCanvas{border:2px solid var(--o1);border-radius:16px;box-shadow:0 0 12px color-mix(in srgb,var(--glowc) 25%,transparent),0 10px 30px rgba(0,0,0,.45)}
+html.modern h1,html.modern h2{color:#fff}html.modern .dim{color:var(--dim)}
+html.modern .screen.on{animation:hyprIn .22s ease-out}@keyframes hyprIn{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:none}}
+html.modern button:not(.link){transition:transform .12s,box-shadow .2s,filter .2s}
+html.modern button:not(.link):not(:disabled):hover{box-shadow:0 0 14px color-mix(in srgb,var(--glowc) 40%,transparent),0 8px 22px rgba(0,0,0,.35)}
 html.modern button:not(.link):active{transform:scale(.97)}
-html.modern button.main:not(.link):not(.hole):not(.pad){background:linear-gradient(135deg,#2fc58a,#1f8d74);border-color:rgba(120,255,190,.55);box-shadow:0 0 18px rgba(60,220,150,.45),inset 0 1px 0 rgba(255,255,255,.25)}
-html.modern button.boss:not(.link):not(.hole):not(.pad){background:linear-gradient(135deg,#ff5f6d,#a5244a);border-color:rgba(255,140,150,.6);animation:modPulse 2.4s ease-in-out infinite}
-@keyframes modPulse{50%{box-shadow:0 0 26px rgba(255,95,109,.7),inset 0 1px 0 rgba(255,255,255,.25)}}
-html.modern button.picked:not(.link):not(.hole):not(.pad){box-shadow:0 0 0 2px var(--gold),0 0 20px rgba(255,200,87,.5)}
-html.modern .hole,html.modern .pad{border-radius:22px;border:1px solid var(--line);box-shadow:inset 0 2px 12px rgba(0,0,0,.4)}
-html.modern .pad.lit{box-shadow:0 0 30px var(--gold)}
-html.modern input{border-radius:14px;border:1px solid var(--line);background:rgba(10,8,22,.55);transition:box-shadow .2s}
-html.modern input:focus{outline:none;box-shadow:0 0 0 2px var(--glow),0 0 18px rgba(143,123,255,.5)}
-html.modern .stage,html.modern .fight,html.modern #miniCanvas{border-radius:24px;border:1px solid var(--line);box-shadow:0 0 0 1px rgba(255,255,255,.05),0 0 34px rgba(143,123,255,.35),0 12px 40px rgba(0,0,0,.45)}
-html.modern .bossRow,html.modern .infoCard,html.modern .day,html.modern .tile,html.modern .friendRow,html.modern .panel,html.modern .meter{border-radius:var(--r);border:1px solid var(--line);background:linear-gradient(160deg,rgba(255,255,255,.07),rgba(255,255,255,.01)),var(--panel);backdrop-filter:blur(12px);box-shadow:0 8px 26px rgba(0,0,0,.3)}
-html.modern .bossRow{transition:transform .2s,box-shadow .2s}html.modern .bossRow:hover{transform:translateY(-2px);box-shadow:0 0 22px rgba(143,123,255,.35),0 10px 26px rgba(0,0,0,.35)}
-html.modern .achRow.ready{box-shadow:0 0 22px rgba(255,200,87,.45)}html.modern .day.today{box-shadow:0 0 18px rgba(255,200,87,.6);border-color:var(--gold)}
-html.modern .panel{border-color:rgba(255,200,87,.45);background:linear-gradient(160deg,rgba(80,64,140,.75),rgba(24,18,48,.9));box-shadow:0 0 50px rgba(143,123,255,.35),0 20px 60px rgba(0,0,0,.6)}
-html.modern .modal{background:rgba(6,4,16,.55);backdrop-filter:blur(8px)}
-html.modern .modal.on .panel{animation:modPop .3s cubic-bezier(.2,1.4,.4,1)}
-@keyframes modPop{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
-html.modern .bar,html.modern .xp{border-radius:999px;border:1px solid var(--line);background:rgba(10,8,22,.6);overflow:hidden}
-html.modern .bar i,html.modern .xp i{border-radius:999px;position:relative;box-shadow:0 0 12px currentColor;transition:width .5s ease;
-  background-image:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent)!important;background-size:60% 100%!important;background-repeat:no-repeat!important;animation:modShine 2.8s linear infinite}
-html.modern #b-food{background-color:var(--gold);color:var(--gold)}html.modern #b-energy{background-color:var(--blue);color:var(--blue)}html.modern #b-joy{background-color:var(--green);color:var(--green)}html.modern .xp i{background-color:#8f7bff;color:#8f7bff}
-@keyframes modShine{from{background-position:-120% 0}to{background-position:220% 0}}
-html.modern .stat{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
-html.modern .say:not(:empty){left:50%;right:auto;transform:translateX(-50%);width:max-content;max-width:90%;background:rgba(255,255,255,.88);border-radius:999px;padding:4px 14px;box-shadow:0 4px 18px rgba(0,0,0,.25);animation:modIn .3s ease-out}
-html.modern .toast{border-radius:999px;border:1px solid rgba(255,200,87,.6);background:rgba(20,14,40,.85);backdrop-filter:blur(10px);box-shadow:0 0 26px rgba(255,200,87,.35)}
-html.modern .petName{text-decoration:none;text-shadow:0 0 14px rgba(255,200,87,.6)}
-html.modern #btnAch .dot{border-radius:50%;box-shadow:0 0 10px var(--red);animation:modPulse 1.6s infinite}
-html.modern .golden{filter:drop-shadow(0 0 14px #ffd34d)}
+/* Coloured buttons keep the dark glass and only tint the text and border. */
+html.modern button.main:not(.link):not(.hole):not(.pad){--edge:linear-gradient(135deg,#7ee0a8,#5fcfb8);color:#9ff0c4}
+html.modern button.boss:not(.link):not(.hole):not(.pad){--edge:linear-gradient(135deg,#ff8a9a,#f5a3c7);color:#ffb3bf}
+html.modern button.picked:not(.link):not(.hole):not(.pad){--edge:linear-gradient(135deg,#ffd27a,#f5a3c7);color:#ffe0a3}
+/* Buttons: soft tinted glass inside, each home button in its own colour. */
+html.modern button:not(.link):not(.hole):not(.pad){--winFill:var(--btnFill,linear-gradient(180deg,rgba(78,58,102,.82),rgba(44,34,64,.82)))}
+html.modern #btnFeed{--winFill:var(--btnFill,linear-gradient(180deg,rgba(150,82,52,.82),rgba(92,46,34,.82)))}
+html.modern #btnRest{--winFill:var(--btnFill,linear-gradient(180deg,rgba(52,96,150,.82),rgba(30,56,98,.82)))}
+html.modern #btnTrain{--winFill:var(--btnFill,linear-gradient(180deg,rgba(46,128,92,.84),rgba(26,80,60,.84)))}
+html.modern #btnBoss{--winFill:var(--btnFill,linear-gradient(180deg,rgba(150,48,72,.84),rgba(96,26,48,.84)))}
+html.modern #btnBag{--winFill:var(--btnFill,linear-gradient(180deg,rgba(128,96,54,.82),rgba(78,56,34,.82)))}
+html.modern #btnShop{--winFill:var(--btnFill,linear-gradient(180deg,rgba(116,62,140,.82),rgba(72,36,92,.82)))}
+html.modern .pad.lit{--win:rgba(255,200,87,.85)}
+html.modern .achRow.ready{--edge:linear-gradient(135deg,#ffd27a,#f5a3c7)}html.modern .day.today{--edge:linear-gradient(135deg,#ffd27a,#f5a3c7)}
+html.modern .panel{--win:var(--panelWin,rgba(14,13,22,.92))}
+html.modern .modal{background:rgba(0,0,0,.35);backdrop-filter:blur(6px)}
+html.modern .modal.on .panel{animation:hyprIn .2s ease-out}
+html.modern input:focus{outline:none;box-shadow:0 0 12px color-mix(in srgb,var(--glowc) 45%,transparent)}
+/* Bars: rounded, with a gentle shine. */
+html.modern .bar,html.modern .xp{border-radius:999px;overflow:hidden;box-shadow:none}
+html.modern .bar i,html.modern .xp i{border-radius:999px;transition:width .5s ease;background-image:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent)!important;background-size:50% 100%!important;background-repeat:no-repeat!important;animation:hyprShine 3.5s linear infinite}
+html.modern .xp i{background-color:var(--pink)}
+@keyframes hyprShine{from{background-position:-100% 0}to{background-position:250% 0}}
+html.modern .stat{border-radius:999px;padding:3px 10px}
+html.modern .say:not(:empty){left:50%;right:auto;transform:translateX(-50%);width:max-content;max-width:90%;color:var(--text);border:2px solid var(--o1);background:rgba(16,15,24,.85);border-radius:12px;padding:4px 12px}
+html.modern .toast{border-radius:12px;border:2px solid var(--o1);background:rgba(16,15,24,.92);box-shadow:0 0 12px color-mix(in srgb,var(--glowc) 30%,transparent)}
+html.modern .petName{color:var(--pink);text-decoration:none}
+html.modern .infoHead b{color:var(--pink)}html.modern .infoHead{border-bottom-color:rgba(255,255,255,.1)}html.modern .infoItems{border-top-color:rgba(255,255,255,.1)}
+html.modern #btnAch .dot{border-radius:50%;border:0;background:#ff8a9a}
+html.modern .colorRow{display:grid;grid-template-columns:1fr 64px;gap:10px;align-items:center;text-align:left}
+.colorRow input[type=color]{width:64px;height:40px;padding:0;border-radius:10px;cursor:pointer;background:none}
+.colorRow input[type=color]:disabled{opacity:.35}
 @media (prefers-reduced-motion:reduce){html.modern *,html.modern body{animation:none!important;transition:none!important}}
 </style>
-<script>try{if(localStorage.getItem('sbuffogotchi.look')==='modern')document.documentElement.classList.add('modern')}catch(e){}</script>
+<script>
+// The player's Modern colours (Settings → Colours), kept on this device.
+window.applyLookColors=function(c){var s=document.documentElement.style,rgba=function(hex,a){var n=parseInt(hex.slice(1),16);return'rgba('+(n>>16)+','+(n>>8&255)+','+(n&255)+','+a+')'};
+  ['--btnFill','--win','--panelWin','--o1','--o2','--text','--glowc'].forEach(function(k){s.removeProperty(k)});if(!c)return;
+  if(c.btn)s.setProperty('--btnFill','linear-gradient('+rgba(c.btn,.86)+','+rgba(c.btn,.86)+')');
+  if(c.win){s.setProperty('--win',rgba(c.win,.82));s.setProperty('--panelWin',rgba(c.win,.92))}
+  if(c.o1)s.setProperty('--o1',c.o1);if(c.o2)s.setProperty('--o2',c.o2);if(c.text)s.setProperty('--text',c.text);if(c.glow)s.setProperty('--glowc',c.glow)};
+try{if(localStorage.getItem('sbuffogotchi.look')==='modern'){document.documentElement.classList.add('modern');applyLookColors(JSON.parse(localStorage.getItem('sbuffogotchi.colors')||'null'))}}catch(e){}
+</script>
 </head>
 <body>
 <div id="app">
@@ -386,6 +401,12 @@ html.modern .golden{filter:drop-shadow(0 0 14px #ffd34d)}
   <p class="dim" data-i18n="petNameAbout"></p>
   <input id="petNameInput" maxlength="20" autocomplete="off" spellcheck="false">
   <div class="row2"><button id="btnNameCancel" data-i18n="cancel"></button><button class="main" id="btnNameSave" data-i18n="petNameSave"></button></div>
+</div></div>
+<div class="modal" id="colorWin"><div class="panel center">
+  <h2 data-i18n="colorsTitle"></h2>
+  <p class="dim" data-i18n="colorsAbout"></p>
+  <div class="menuList" id="colorList"></div>
+  <div class="row2"><button id="btnColorsReset" data-i18n="colorsReset"></button><button class="main" id="btnColorsDone" data-i18n="colorsDone"></button></div>
 </div></div>
 <div class="modal" id="daily"><div class="panel">
   <h2 data-i18n="dailyTitle"></h2>

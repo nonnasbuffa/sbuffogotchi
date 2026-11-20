@@ -746,10 +746,17 @@ const Game = (() => {
     look.onclick = () => {
       const on = !document.documentElement.classList.contains('modern');
       document.documentElement.classList.toggle('modern', on);
+      window.applyLookColors?.(on ? lookColors() : null);
       try { localStorage.setItem('sbuffogotchi.look', on ? 'modern' : 'classic'); } catch { /* lasts until the app closes */ }
       renderSettings();
     };
     list.append(look);
+    if (modern) {
+      const colors = document.createElement('button');
+      colors.textContent = `🎨 ${t('colorsTitle')}`;
+      colors.onclick = openColors;
+      list.append(colors);
+    }
     const gifts = document.createElement('button');
     gifts.textContent = `${t('giftSetting')}: ${t({ ask: 'giftModeAsk', auto: 'giftModeAuto', off: 'giftModeOff' }[giftMode()])}`;
     gifts.onclick = () => {
@@ -762,6 +769,50 @@ const Game = (() => {
     tut.onclick = startTutorial;
     list.append(tut);
   }
+
+  // ----- Modern colours -----
+  // Each colour can be changed; "btn" is only set when every button should share one colour.
+  const COLOR_KEY = 'sbuffogotchi.colors';
+  const COLOR_DEFAULTS = { btn: '#4e3a66', win: '#100f18', o1: '#f5a3c7', o2: '#b9a3ff', text: '#ece6f5', glow: '#f5a3c7' };
+  const COLOR_ROWS = [['btn', 'colorBtn'], ['win', 'colorWin'], ['o1', 'colorO1'], ['o2', 'colorO2'], ['text', 'colorText'], ['glow', 'colorGlow']];
+  function lookColors() {
+    try { return JSON.parse(localStorage.getItem(COLOR_KEY) || 'null') || {}; } catch { return {}; }
+  }
+  function setLookColors(c) {
+    try { localStorage.setItem(COLOR_KEY, JSON.stringify(c)); } catch { /* lasts until the app closes */ }
+    window.applyLookColors?.(c);
+  }
+  function renderColors() {
+    const c = lookColors();
+    const list = $('colorList');
+    list.replaceChildren();
+    const tints = document.createElement('button');
+    tints.textContent = `${t('colorTints')}: ${t(c.btn ? 'musicOff' : 'musicOn')}`;
+    if (!c.btn) tints.className = 'picked';
+    tints.onclick = () => {
+      const now = lookColors();
+      if (now.btn) delete now.btn; else now.btn = COLOR_DEFAULTS.btn;
+      setLookColors(now); renderColors();
+    };
+    list.append(tints);
+    for (const [key, label] of COLOR_ROWS) {
+      const row = document.createElement('label');
+      row.className = 'colorRow';
+      const name = document.createElement('span');
+      name.textContent = t(label);
+      const pick = document.createElement('input');
+      pick.type = 'color';
+      pick.value = c[key] || COLOR_DEFAULTS[key];
+      // Button colour only counts when the buttons share one colour.
+      if (key === 'btn' && !c.btn) pick.disabled = true;
+      pick.oninput = () => { const now = lookColors(); now[key] = pick.value; setLookColors(now); };
+      row.append(name, pick);
+      list.append(row);
+    }
+  }
+  function openColors() { renderColors(); $('colorWin').classList.add('on'); }
+  $('btnColorsDone').onclick = () => $('colorWin').classList.remove('on');
+  $('btnColorsReset').onclick = () => { setLookColors({}); renderColors(); };
 
   // ----- daily reward -----
   const dailyReady = () => dayNumber(Cloud.now()) > S.lastReward;
