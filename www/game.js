@@ -117,18 +117,22 @@ const Game = (() => {
     // After a death the new life always wins, so an old save can never bring back the last one.
     const lifeLocal = local.life ?? 0, lifeRemote = remote.life ?? 0;
     if (lifeLocal !== lifeRemote) return { ...fresh(), ...(lifeLocal > lifeRemote ? local : remote) };
-    const winner = progress(remote) === progress(local)
+    // A change made in the terminal is the truth: the save that has it wins whole, even over more progress.
+    const edited = (remote.editedAt || 0) > (local.updatedAt || 0) ? remote : (local.editedAt || 0) > (remote.updatedAt || 0) ? local : null;
+    const winner = edited || (progress(remote) === progress(local)
       ? (remote.updatedAt > local.updatedAt ? remote : local)
-      : (progress(remote) > progress(local) ? remote : local);
-    const better = remote.lastDay > local.lastDay || !local.lastDay ? remote : local;
+      : (progress(remote) > progress(local) ? remote : local));
+    // The streak comes from the save that checked in most recently (on the same day, the newer save).
+    const better = edited || (remote.lastDay > local.lastDay || !local.lastDay ? remote
+      : remote.lastDay === local.lastDay && remote.updatedAt > local.updatedAt ? remote : local);
     return { ...fresh(), ...winner, streak: better.streak, lastDay: better.lastDay,
       // A reward claimed on any device stays claimed everywhere.
       rewardDay: Math.max(local.rewardDay ?? 0, remote.rewardDay ?? 0),
       lastReward: Math.max(local.lastReward ?? -1, remote.lastReward ?? -1),
       mortal: local.mortal || remote.mortal,
       // A CD bought on any device stays owned everywhere.
-      cds: [...new Set([...(local.cds || []), ...(remote.cds || [])])],
-      skins: [...new Set([...(local.skins || []), ...(remote.skins || [])])],
+      cds: edited ? (edited.cds || []) : [...new Set([...(local.cds || []), ...(remote.cds || [])])],
+      skins: edited ? (edited.skins || []) : [...new Set([...(local.skins || []), ...(remote.skins || [])])],
       createdAt: Math.min(local.createdAt || Infinity, remote.createdAt || Infinity) === Infinity ? undefined : Math.min(local.createdAt || Infinity, remote.createdAt || Infinity) };
   }
 
@@ -224,13 +228,12 @@ const Game = (() => {
     tick();
     $('lvl').textContent = S.level;
     $('petNameText').textContent = petName();
-    $('streak').textContent = S.streak;
+    $('streak').textContent = (S.streak || 0).toLocaleString(I18n.current());
     $('xpFill').style.width = `${(S.xp / xpNeeded()) * 100}%`;
     for (const k of ['food', 'energy', 'joy']) $(`b-${k}`).style.width = `${S[k]}%`;
     $('str').textContent = S.str; $('wins').textContent = S.bossWins; $('pokenStat').textContent = (S.poken || 0).toLocaleString(I18n.current());
     const u = Cloud.user();
     $('btnAccount').textContent = u ? u.name : t('guestName');
-    $('btnAdmin').hidden = true; // The panel has no button: whoever has the key opens it with 'ui' in the terminal.
     const lowest = Math.min(S.food, S.energy, S.joy);
     $('say').textContent = lowest >= 25 ? (Date.now() < sighUntil ? sighText : '') : S.food === lowest ? t(hasItemFor('food') ? 'hungry' : 'noFood') : S.energy === lowest ? t(hasItemFor('energy') ? 'tired' : 'noEnergy') : t('lonely');
     const need = nextBossLevel();
@@ -616,7 +619,8 @@ const Game = (() => {
     { id: 'cdAll', prize: 2000, check: () => [CDS.filter((c) => (S.cds || []).includes(c.id)).length, CDS.length] },
     { id: 'skin1', prize: 1000, check: () => [(S.skins || []).length, 1] },
   ];
-  const achDone = (a) => { const [n, goal] = a.check(); return n >= goal; };
+  // Done for real, or unlocked through the terminal (S.achForced): either way it can be claimed for its Poken.
+  const achDone = (a) => { if (S.achForced?.[a.id]) return true; const [n, goal] = a.check(); return n >= goal; };
   const achClaimed = (a) => !!(S.achieved || {})[a.id];
   const claimable = () => ACHIEVEMENTS.filter((a) => achDone(a) && !achClaimed(a));
   // Tells the player once when a new one is ready, and lights up the trophy button.
@@ -638,7 +642,7 @@ const Game = (() => {
     $('achCount').textContent = t('achCount', { a: got, b: ACHIEVEMENTS.length });
     for (const a of ACHIEVEMENTS) {
       const [n, goal] = a.check();
-      const done = n >= goal, claimed = achClaimed(a);
+      const done = achDone(a), claimed = achClaimed(a);
       const row = document.createElement('div');
       row.className = `bossRow achRow${claimed ? ' claimed' : done ? ' ready' : ' locked'}${a.special ? ' special' : ''}`;
       const img = document.createElement('img');
@@ -832,7 +836,7 @@ const Game = (() => {
     giftSeg.classList.add('wide');
     row(game, `🎁 ${t('giftSetting')}`, giftSeg).classList.add('stack');
     goRow(game, `📖 ${t('tutReplay')}`, startTutorial);
-    goRow(game, `💻 ${t('terminal')}`, openTerminal);
+    if (isAdmin()) goRow(game, `💻 ${t('terminal')}`, openTerminal);
   }
 
   // ----- Modern colours -----
@@ -2723,23 +2727,9 @@ const Game = (() => {
     saveCheats();
     $('friendName').value = '';
     render();
-    openAdmin();
+    openTerminal();
     toast(t('adminUnlocked'));
   }
-  const ADMIN_TOGGLES = [
-    ['god', 'cheatGod'],
-    ['oneShot', 'cheatOneShot'],
-    ['invincible', 'cheatInvincible'],
-  ];
-  const ADMIN_ACTIONS = [
-    ['cheatFill', () => { S.food = S.energy = S.joy = 100; S.tickAt = Date.now(); }],
-    ['cheatLevel', () => { S.level += 1; S.xp = 0; }],
-    ['cheatStr', () => { S.str += 10; }],
-    ['cheatBoss', () => { S.level = Math.max(S.level, nextBossLevel()); }],
-    ['cheatDaily', () => { S.lastReward = dayNumber(Cloud.now()) - 1; }],
-    ['cheatPoken', () => { S.poken = (S.poken || 0) + 10000; }],
-    ['cheatGolden', () => { closeAdmin(); show('home'); spawnGolden(); return true; }],
-  ];
   function adminButton(label, onclick, cls) {
     const b = document.createElement('button');
     b.textContent = label;
@@ -2747,78 +2737,6 @@ const Game = (() => {
     b.onclick = onclick;
     return b;
   }
-  // The panel is a window over the game, so changes show up behind it straight away.
-  function openAdmin() {
-    if (!cheat('unlocked')) return;
-    $('adminWin').style.left = ''; $('adminWin').style.top = '';
-    renderAdmin();
-    $('adminWin').classList.add('on');
-  }
-  function closeAdmin() {
-    $('adminWin').classList.remove('on');
-  }
-  function renderAdmin() {
-    const list = $('adminList');
-    const scroll = list.scrollTop;
-    list.replaceChildren();
-    if ($('s-home').classList.contains('on')) render();
-    for (const [name, key] of ADMIN_TOGGLES) {
-      list.append(adminButton(`${t(key)}: ${t(cheats()[name] ? 'musicOn' : 'musicOff')}`, () => {
-        cheats()[name] = !cheats()[name];
-        if (name === 'god' && cheats().god) tick();
-        saveCheats();
-        renderAdmin();
-      }, cheats()[name] ? 'picked' : ''));
-    }
-    list.append(heading('cheatItems'));
-    for (const id of Object.keys(ITEMS)) {
-      const row = document.createElement('div');
-      row.className = 'adminItem';
-      const img = document.createElement('img');
-      img.src = ITEMS[id].icon; img.alt = '';
-      const name = document.createElement('span');
-      name.textContent = `${t(ITEMS[id].key)} x${S.items[id] || 0}`;
-      const give = (n) => () => { addItems({ [id]: n }); save(); renderAdmin(); };
-      row.append(img, name, adminButton('+1', give(1)), adminButton('+10', give(10)));
-      list.append(row);
-    }
-    list.append(heading('cheatMore'));
-    const grid = document.createElement('div');
-    grid.className = 'row2';
-    for (const [key, run] of ADMIN_ACTIONS) {
-      grid.append(adminButton(t(key), () => {
-        const left = run();
-        save();
-        toast(t('cheatDone'));
-        if (!left) renderAdmin();
-      }));
-    }
-    list.append(grid);
-    list.append(adminButton(`💻 ${t('terminal')}`, () => { closeAdmin(); openTerminal(); }, 'main'));
-    list.append(adminButton(t('cheatLock'), () => {
-      S.cheats = {};
-      saveCheats();
-      closeAdmin();
-      render();
-    }, 'boss'));
-    list.scrollTop = scroll;
-  }
-  // On computers the window can be dragged around by its title bar.
-  $('adminDrag').onpointerdown = (e) => {
-    if (e.target.closest('button')) return;
-    const win = $('adminWin');
-    const box = win.getBoundingClientRect();
-    const dx = e.clientX - box.left, dy = e.clientY - box.top;
-    $('adminDrag').setPointerCapture(e.pointerId);
-    $('adminDrag').onpointermove = (m) => {
-      win.style.left = `${Math.max(-box.width / 2, Math.min(innerWidth - box.width / 2, m.clientX - dx)) + box.width / 2}px`;
-      win.style.top = `${Math.max(0, Math.min(innerHeight - 40, m.clientY - dy)) + box.height / 2}px`;
-    };
-    $('adminDrag').onpointerup = () => { $('adminDrag').onpointermove = null; };
-  };
-  $('btnAdminClose').onclick = closeAdmin;
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAdmin(); });
-
   // ----- profiles -----
   // Your own profile shows everything about her; a friend's shows what their public profile shares.
   let profileFrom = 'home';
@@ -3222,9 +3140,17 @@ const Game = (() => {
   async function enterGame() {
     S = loadLocal();
     let offline = false;
-    if (Cloud.user()) {
-      try { S = merge(S, await Cloud.pull()); } catch { offline = true; toast(t('offlineLater')); }
+    const uid = Cloud.user()?.uid;
+    if (uid) {
+      try {
+        const remote = await Cloud.pull();
+        // A save left on this device by a guest (or another account) never mixes into an existing account.
+        // A brand-new account keeps the guest's progress.
+        if (S.owner && S.owner !== uid) S = remote ? { ...fresh(), ...remote } : S;
+        else S = merge(S, remote);
+      } catch { offline = true; toast(t('offlineLater')); }
     }
+    S.owner = uid || 'guest';
     // A Sbuffling that has never had a first day is brand new: time for the tutorial.
     if (S.lastDay == null && S.tutorialDone === undefined && !offline) S.tutorialDone = false;
     adoptOldCheats();
@@ -3266,12 +3192,12 @@ const Game = (() => {
   }
 
   // ----- terminal -----
-  // A console like the ones in PC games: ` or F11 opens it (or the admin panel, on phones).
-  // Anyone can look around, open screens and change colours; changing the game itself needs
-  // sv_cheats 1, which anyone can type (if they know it). `js` runs any JavaScript at all.
-  const GAME_VERSION = '1.7.0';
+  // A console like the ones in PC games, only for players in admin mode (unlocked with the code in Friends):
+  // ` or F11 opens it, or Settings on phones. For everyone else those keys do nothing here.
+  // Every change it makes is saved and sent to the server at once, as the player's real data.
+  const GAME_VERSION = '1.8.0';
   const term = { open: false, history: [], at: 0, started: Date.now() };
-  const svCheats = () => S.svCheats === true;
+  const isAdmin = () => !!S.cheats?.unlocked;
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
   function termPrint(text, cls = '') {
     const line = document.createElement('div');
@@ -3282,6 +3208,7 @@ const Game = (() => {
   }
   const termHtml = (html, cls = '') => { const d = document.createElement('div'); d.innerHTML = html; termPrint(d, cls); };
   function openTerminal() {
+    if (!isAdmin()) return;
     term.open = true;
     $('termWin').classList.add('on');
     if (!$('termOut').childElementCount) { fetchLogo(); termPrint(t('tm_welcome'), 'dim'); }
@@ -3316,12 +3243,8 @@ const Game = (() => {
     for (const k of keys.slice(0, -1)) { if (typeof o[k] !== 'object' || o[k] === null) o[k] = {}; o = o[k]; }
     o[keys.at(-1)] = value;
   }
-  function needCheats() {
-    if (svCheats()) return false;
-    termPrint(t('tm_needCheats'), 'err');
-    return true;
-  }
-  function changed() { tick(); S.tickAt = Date.now(); save(); sync(); render(); if ($('s-shop').classList.contains('on')) renderShop(); }
+  // After any change: marked as a terminal edit (so it wins over older copies), saved and sent to the server now.
+  function changed() { S.editedAt = Date.now(); tick(); S.tickAt = Date.now(); save(); sync(); render(); if ($('s-shop').classList.contains('on')) renderShop(); }
   // Changes are written with full paths that start with get., like a real console:
   //   get.items.poken = 500   get.items.pizza += 3   get.stats.food = 100
   //   get.cds.sbuff_n_base = true   get.skins.babbo = true   get.achievements.<id> = true
@@ -3372,8 +3295,21 @@ const Game = (() => {
     }
     if (group === 'achievements') {
       const ac = findAch(key); if (!ac) return null;
-      return { kind: 'boolean', read: () => !!S.achieved?.[ac.id],
-        write: (v) => { S.achieved = { ...(S.achieved || {}) }; if (v) S.achieved[ac.id] = Date.now(); else delete S.achieved[ac.id]; } };
+      // true unlocks it (ready to claim in Achievements, like doing it for real); false takes it back.
+      return { kind: 'boolean', read: () => achDone(ac),
+        write: (v) => {
+          S.achForced = { ...(S.achForced || {}) };
+          if (v) S.achForced[ac.id] = true;
+          else {
+            delete S.achForced[ac.id];
+            S.achieved = { ...(S.achieved || {}) }; delete S.achieved[ac.id];
+            if (S.achSeen) delete S.achSeen[ac.id];
+          }
+        } };
+    }
+    if (group === 'cheats') {
+      if (!['god', 'oneShot', 'invincible'].includes(key)) return null;
+      return { kind: 'boolean', read: () => !!cheats()[key], write: (v) => { cheats()[key] = v; } };
     }
     return null;
   }
@@ -3386,7 +3322,7 @@ const Game = (() => {
     if (op !== '=' && slot.kind !== 'number') return termPrint(t('tm_onlyNumbers', { op }), 'err');
     const value = typedValue(raw, slot.kind, path);
     if (value === undefined) return;
-    if (needCheats()) return;
+    
     // "= +x" / "= -x" (or just "+x" / "-x" after the path) add or take away x; a plain number replaces the value.
     const relative = slot.kind === 'number' && /^[+-]/.test(raw.trim());
     const next = op === '+=' ? slot.read() + value : op === '-=' ? slot.read() - value : relative ? slot.read() + value : value;
@@ -3401,7 +3337,6 @@ const Game = (() => {
     skins: () => { shopTab = 'skins'; show('shop'); }, bag: () => openBag(null), inventory: () => openBag(null),
     friends: () => show('friends'), settings: () => show('settings'), achievements: () => show('ach'), ach: () => show('ach'),
     training: () => show('trainMenu'), train: () => show('trainMenu'), bosses: () => show('bosses'), profile: () => openMyProfile(),
-    admin: () => COMMANDS.ui(),
     colors: () => openColors(), colours: () => openColors(), cdplayer: () => openCd(), daily: () => openDaily(),
     name: () => openPetName(), tutorial: () => startTutorial(),
     pong: () => startMini('pong', PIZZA_PONG), rhythm: () => startMini('rhythm', RICE_RHYTHM), catch: () => startMini('catch', RICE_CATCH),
@@ -3480,7 +3415,7 @@ const Game = (() => {
         ['Theme', document.documentElement.classList.contains('modern') ? 'Modern [glass]' : 'Classic [pixel]'],
         ['Skin', esc(t(skinNow().key))], ['CPU', `Poke Bowl Core (${S.str}) @ ${t('tm_streak', { n: S.streak })}`],
         ['GPU', `Rice Rendering ${esc(realGpu())}`], ['Memory', t('tm_memory', { f: Math.round(S.food), e: Math.round(S.energy), j: Math.round(S.joy) })],
-        ['Poken', (S.poken || 0).toLocaleString()], ['sv_cheats', svCheats() ? '1' : '0'],
+        ['Poken', (S.poken || 0).toLocaleString()],
       ].map((r) => (Array.isArray(r) ? `<span class="tp">${r[0]}</span>: ${r[1]}` : r));
       const blocks = ['#231d33', '#e8604c', '#5fcf80', '#ffc857', '#62b6e8', '#c46ad8', '#5fcfb8', '#f6eedd']
         .map((b) => `<span style="background:${b}">&nbsp;&nbsp;&nbsp;</span>`).join('');
@@ -3496,7 +3431,7 @@ const Game = (() => {
   // --- commands ---
   // The commands (left) stay in English; their descriptions (grey) follow the game's language.
   const HELP = [
-    ['help', 'h_help'], ['ui', 'h_ui'], ['sbuffofetch / neofetch', 'h_fetch'],
+    ['help', 'h_help'], ['sbuffofetch / neofetch', 'h_fetch'],
     ['open <screen>', 'h_open'], ['close', 'h_close'],
     ['ls [state|items|cds|skins|achievements|screens]', 'h_ls'], ['get <path> / <path>', 'h_get'],
     ['get.items.<item> = <number>', 'h_items'],
@@ -3508,16 +3443,14 @@ const Game = (() => {
     ['lang en|es|it', 'h_lang'], ['music on|off', 'h_music'], ['play <cd> / stop', 'h_play'],
     ['give <item> [n]', 'h_give'], ['fill', 'h_fill'],
     ['toast <text>', 'h_toast'], ['golden', 'h_golden'],
-    ['sv_cheats 0|1', 'h_sv'],
+    ['get.cheats.<god|oneShot|invincible> = true|false', 'h_cheats'], ['lock', 'h_lock'],
     ['cat save', 'h_cat'], ['js <code>', 'h_js'],
     ['history, clear, echo, date, whoami, uname -a, reboot', 'h_usual'],
   ];
   const COMMANDS = {
     help() { for (const [c, d] of HELP) termHtml(`<span class="tp">${esc(c)}</span>  <span class="dim">${esc(t(d, { list: Object.keys(OPENERS).join(', ') }))}</span>`); },
-    ui() {
-      if (!S.cheats?.unlocked) return termPrint(t('tm_experts'), 'err');
-      closeTerminal(); openAdmin();
-    },
+    // Leaves admin mode: the terminal locks until the code is entered in Friends again.
+    lock() { S.cheats = {}; changed(); closeTerminal(); toast(t('tm_locked')); },
     sbuffofetch: () => fetchLogo(), neofetch: () => fetchLogo(), fastfetch: () => fetchLogo(),
     clear() { $('termOut').replaceChildren(); },
     close: () => closeTerminal(), exit: () => closeTerminal(),
@@ -3582,17 +3515,12 @@ const Game = (() => {
     give(rest) {
       const [id, n = '1'] = rest.split(/\s+/);
       if (!ITEMS[id]) return termPrint(t('tm_giveItems', { list: Object.keys(ITEMS).join(', ') }), 'err');
-      if (needCheats()) return;
+      
       addItems({ [id]: Math.max(1, parseInt(n, 10) || 1) }); changed();
       termPrint(`${id} = ${S.items[id]}`, 'ok');
     },
-    fill() { if (needCheats()) return; S.food = S.energy = S.joy = 100; changed(); termPrint(t('tm_filled'), 'ok'); },
-    golden() { if (needCheats()) return; closeTerminal(); show('home'); spawnGolden(); },
-    sv_cheats(rest) {
-      if (!rest) return termPrint(`sv_cheats = ${svCheats() ? 1 : 0}`);
-      S.svCheats = rest.trim() !== '0'; save();
-      termPrint(`sv_cheats = ${svCheats() ? 1 : 0}`, 'ok');
-    },
+    fill() { S.food = S.energy = S.joy = 100; changed(); termPrint(t('tm_filled'), 'ok'); },
+    golden() { closeTerminal(); show('home'); spawnGolden(); },
     js(rest) {
       try {
         // Runs with the save and the game in reach; whatever it returns is printed.
@@ -3654,7 +3582,7 @@ const Game = (() => {
   $('btnTermClose').onclick = closeTerminal;
   // ` (the key under Esc, like PC games) or F11 opens it on computers.
   window.addEventListener('keydown', (e) => {
-    if (!(e.code === 'Backquote' || e.key === 'F11')) return;
+    if (!(e.code === 'Backquote' || e.key === 'F11') || !isAdmin()) return;
     const typing = document.activeElement?.matches?.('input:not(#keyCatcher), textarea') && document.activeElement !== $('termIn');
     if (typing && e.key !== 'F11') return;
     e.preventDefault(); e.stopPropagation();
@@ -3680,7 +3608,6 @@ const Game = (() => {
   $('btnBag').onclick = () => openBag(null);
   $('btnShop').onclick = () => { shopTab = 'sell'; show('shop'); };
   $('btnFriends').onclick = () => show('friends');
-  $('btnAdmin').onclick = openAdmin;
   $('btnAddFriend').onclick = () => addFriend($('friendName').value);
   $('friendName').onkeydown = (e) => { if (e.key === 'Enter') addFriend($('friendName').value); };
   $('pet').onpointerdown = petHer;
