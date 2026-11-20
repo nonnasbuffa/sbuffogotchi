@@ -1209,7 +1209,7 @@ const Game = (() => {
     MINI_W = fitMiniWidth(game, extra);
     // In 3D the canvas is drawn at twice the size so the 3D scene stays sharp; the game still thinks in its own pixels.
     const is3d = !!(game.draw3d && window.Games3D && use3d());
-    MINI_SCALE = is3d ? 2 : 1;
+    MINI_SCALE = is3d || game.hiRes ? 2 : 1;
     $('miniCanvas').width = MINI_W * MINI_SCALE;
     $('miniCanvas').height = MINI_H * MINI_SCALE;
     $('miniCanvas').classList.toggle('is3d', is3d);
@@ -1855,7 +1855,7 @@ const Game = (() => {
     p.sw = Math.round(p.scale * roadW * WU.HALF);
     p.cz = cz;
   }
-  const WU_HAZE = [214, 236, 246];
+  const WU_HAZE = [226, 238, 236];
   const fogCache = new Map();
   function wuFog(hex, f) {
     if (f <= 0) return hex;
@@ -1870,7 +1870,8 @@ const Game = (() => {
   function wuQuad(c, color, x1, y1, w1, x2, y2, w2) {
     c.fillStyle = color;
     c.beginPath();
-    c.moveTo(x1 - w1, y1); c.lineTo(x2 - w2, y2); c.lineTo(x2 + w2, y2); c.lineTo(x1 + w1, y1);
+    // Overlaps the next slice by a pixel so no seams show between them.
+    c.moveTo(x1 - w1, y1 + 1); c.lineTo(x2 - w2, y2); c.lineTo(x2 + w2, y2); c.lineTo(x1 + w1, y1 + 1);
     c.closePath(); c.fill();
   }
   // Racers are the player ("me"), the bots, and in a friendly race the friend.
@@ -1883,6 +1884,7 @@ const Game = (() => {
   }
   const WIPE_UFF = {
     pad: true,
+    hiRes: true,
     padBtn: 'wuItem',
     keysHint: 'wuKeysHint',
     begin(g) {
@@ -2045,23 +2047,42 @@ const Game = (() => {
       finishMini(prize[0], prize[1], `${t('wuDone', { p: wuOrdinal(place) })}${tired ? '' : ` · +${prize[3]} Poken ·`}`, prize[2]);
     },
     draw(g, c) {
-      // Sky, distant hedges that slide sideways on bends, then the garden path.
-      const sky = c.createLinearGradient(0, 0, 0, MINI_H / 2);
-      sky.addColorStop(0, '#7cc8f4'); sky.addColorStop(1, '#d6f0ff');
-      c.fillStyle = sky; c.fillRect(0, 0, MINI_W, MINI_H);
-      c.fillStyle = '#fff';
-      for (let i = 0, n = Math.ceil(MINI_W / 110) + 1; i < n; i++) {
-        const x = ((i * 110 - g.sky * 120) % (n * 110) + n * 110) % (n * 110) - 60;
-        c.fillRect(x, 40 + (i % 2) * 30, 50, 10); c.fillRect(x + 10, 32 + (i % 2) * 30, 28, 8);
+      // Sky with a low sun, soft clouds and two rows of hills that slide sideways on bends.
+      const HZ = MINI_H / 2;
+      const sky = c.createLinearGradient(0, 0, 0, HZ);
+      sky.addColorStop(0, '#3f8fdc'); sky.addColorStop(0.6, '#8fcdf2'); sky.addColorStop(1, '#f3ecd8');
+      c.fillStyle = sky; c.fillRect(0, 0, MINI_W, HZ + 2);
+      const sunX = MINI_W * 0.72 - ((g.sky * 40) % (MINI_W * 2)), sunY = HZ * 0.38;
+      const glow = c.createRadialGradient(sunX, sunY, 4, sunX, sunY, 90);
+      glow.addColorStop(0, 'rgba(255,248,220,.95)'); glow.addColorStop(0.25, 'rgba(255,236,180,.45)'); glow.addColorStop(1, 'rgba(255,236,180,0)');
+      c.fillStyle = glow; c.fillRect(0, 0, MINI_W, HZ);
+      c.fillStyle = '#fffbe9'; c.beginPath(); c.arc(sunX, sunY, 13, 0, Math.PI * 2); c.fill();
+      const wrap = (x, span) => ((x % span) + span) % span;
+      for (const [speed, y0, a, sz] of [[60, 34, 0.55, 0.8], [130, 70, 0.85, 1.1]]) {
+        c.fillStyle = `rgba(255,255,255,${a})`;
+        for (let i = 0; i < 4; i++) {
+          const span = MINI_W + 160;
+          const x = wrap(i * span / 4 + (i * 37) % 50 - g.sky * speed, span) - 80, y = y0 + ((i * 23) % 3) * 10;
+          for (const [ox, oy, rr] of [[0, 0, 12], [14, -6, 15], [30, 0, 11], [16, 4, 12]]) {
+            c.beginPath(); c.arc(x + ox * sz, y + oy * sz, rr * sz, 0, Math.PI * 2); c.fill();
+          }
+        }
       }
-      c.fillStyle = '#9cc79a';
-      for (let i = 0, n = Math.ceil(MINI_W / 50) + 2; i < n; i++) {
-        const x = ((i * 50 - g.sky * 300) % (n * 50) + n * 50) % (n * 50) - 60;
-        c.beginPath(); c.arc(x, MINI_H / 2 + 6, 34 + (i % 3) * 8, Math.PI, 0); c.fill();
-      }
-      const ground = c.createLinearGradient(0, MINI_H / 2, 0, MINI_H * 0.7);
-      ground.addColorStop(0, '#d6ecf6'); ground.addColorStop(1, '#62b04f');
-      c.fillStyle = ground; c.fillRect(0, MINI_H / 2, MINI_W, MINI_H / 2);
+      const hills = (speed, color, shade, height, bumps, seed) => {
+        const span = MINI_W * 2, off = wrap(-g.sky * speed, span);
+        c.fillStyle = color; c.beginPath(); c.moveTo(0, HZ + 2);
+        for (let x = 0; x <= MINI_W; x += 4) {
+          const u = (x - off) / span * Math.PI * 2;
+          c.lineTo(x, HZ - height * (0.55 + 0.3 * Math.sin(u * bumps + seed) + 0.15 * Math.sin(u * bumps * 2.7 + seed * 2)));
+        }
+        c.lineTo(MINI_W, HZ + 2); c.closePath(); c.fill();
+        const fade = c.createLinearGradient(0, HZ - height, 0, HZ + 2);
+        fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(1, shade);
+        c.fillStyle = fade; c.fill();
+      };
+      hills(90, '#9cbcd6', 'rgba(226,238,236,.9)', 58, 3, 1);
+      hills(260, '#78b268', 'rgba(226,238,236,.75)', 30, 5, 4);
+      c.fillStyle = '#5ea64c'; c.fillRect(0, HZ, MINI_W, MINI_H - HZ);
       const me = g.me;
       // The road is drawn from the camera (a little behind her) forwards, so it reaches the bottom of the screen.
       const L = WU_TRACK.length;
@@ -2083,14 +2104,20 @@ const Game = (() => {
         if (p1.cz <= WU.DEPTH || p2.sy >= p1.sy || p2.sy >= maxY) continue;
         const band = Math.floor(seg.i / WU.RUMBLE) % 2;
         const fog = Math.max(0, (n / WU.DRAW - 0.35) / 0.65) ** 1.4;
-        c.fillStyle = wuFog(band ? '#6fbf5a' : '#62b04f', fog);
+        c.fillStyle = wuFog(band ? '#66b452' : '#5aa647', fog);
         c.fillRect(0, p2.sy, MINI_W, p1.sy - p2.sy + 1);
-        wuQuad(c, wuFog(band ? '#d94c3c' : '#f6eedd', fog), p1.sx, p1.sy, p1.sw * 1.12, p2.sx, p2.sy, p2.sw * 1.12);
-        wuQuad(c, wuFog(band ? '#c9a46a' : '#c09a60', fog), p1.sx, p1.sy, p1.sw, p2.sx, p2.sy, p2.sw);
-        if (band) wuQuad(c, wuFog('#efe2c2', fog), p1.sx, p1.sy, p1.sw * 0.03, p2.sx, p2.sy, p2.sw * 0.03);
+        wuQuad(c, wuFog(band ? '#4f9a3f' : '#4a9139', fog), p1.sx, p1.sy, p1.sw * 1.3, p2.sx, p2.sy, p2.sw * 1.3);
+        wuQuad(c, wuFog(band ? '#e0473b' : '#fbf6ea', fog), p1.sx, p1.sy, p1.sw * 1.14, p2.sx, p2.sy, p2.sw * 1.14);
+        wuQuad(c, wuFog('#9c7448', fog), p1.sx, p1.sy, p1.sw * 1.02, p2.sx, p2.sy, p2.sw * 1.02);
+        wuQuad(c, wuFog(band ? '#cba26c' : '#c39a63', fog), p1.sx, p1.sy, p1.sw * 0.94, p2.sx, p2.sy, p2.sw * 0.94);
+        wuQuad(c, wuFog(band ? '#d4ad78' : '#cca46e', fog), p1.sx, p1.sy, p1.sw * 0.5, p2.sx, p2.sy, p2.sw * 0.5);
+        if (band) wuQuad(c, wuFog('#fbf3dc', fog), p1.sx, p1.sy, p1.sw * 0.025, p2.sx, p2.sy, p2.sw * 0.025);
         if (seg.i < 3) wuQuad(c, seg.i % 2 ? '#222' : '#fff', p1.sx, p1.sy, p1.sw, p2.sx, p2.sy, p2.sw);
         maxY = p1.sy;
       }
+      const haze = c.createLinearGradient(0, MINI_H / 2 - 10, 0, MINI_H / 2 + 26);
+      haze.addColorStop(0, 'rgba(226,238,236,0)'); haze.addColorStop(0.4, 'rgba(226,238,236,.55)'); haze.addColorStop(1, 'rgba(226,238,236,0)');
+      c.fillStyle = haze; c.fillRect(0, MINI_H / 2 - 10, MINI_W, 36);
       // Everything standing on the track, far to near, cut off where a hill hides it.
       const sprite = (img, worldW, seg, offX, lift = 0) => {
         const p = seg.view.p1;
@@ -2122,15 +2149,29 @@ const Game = (() => {
               c.drawImage(k.driver, p.sx + p.sw * k.x - w / 2, p.sy - w * 1.45, w, (w * 28) / 30);
             }
           } else if (driver) sprite(driver, 300, seg, k.x, 230);
+          { const p = seg.view.p1; if (p.cz > WU.DEPTH && p.sy < seg.view.clip) {
+            const w = WU_SIZE.kart * p.scale * WU.HALF;
+            c.fillStyle = 'rgba(30,40,20,.35)'; c.beginPath(); c.ellipse(p.sx + p.sw * k.x, p.sy, w * 0.55, w * 0.12, 0, 0, Math.PI * 2); c.fill();
+          } }
           sprite(WU_ART.kart, WU_SIZE.kart, seg, k.x + (k.spin > 0 ? Math.sin(g.time * 30) * 0.05 : 0));
         }
       }
       // The player's own kart, always near the bottom of the screen.
       const wob = me.spin > 0 ? Math.sin(g.time * 30) * 8 : 0;
       const bounce = me.speed > 100 ? Math.round(Math.sin(g.time * 22)) : 0;
-      const kx = MINI_W / 2 - 50 + wob, ky = MINI_H - 80 + bounce;
-      if (g.driver.complete) c.drawImage(g.driver, kx + 32, ky - 22, 36, 34);
-      c.drawImage(WU_ART.kart, kx, ky, 100, 65);
+      const kx = MINI_W / 2 - 44 + wob, ky = MINI_H - 74 + bounce;
+      c.fillStyle = 'rgba(30,40,20,.4)'; c.beginPath(); c.ellipse(MINI_W / 2 + wob, ky + 56, 46, 9, 0, 0, Math.PI * 2); c.fill();
+      if (g.driver.complete) c.drawImage(g.driver, kx + 28, ky - 20, 32, 30);
+      c.drawImage(WU_ART.kart, kx, ky, 88, 57);
+      const fast = me.speed / WU.MAX;
+      if (fast > 0.75) {
+        c.strokeStyle = `rgba(255,255,255,${(fast - 0.75) * 1.6})`; c.lineWidth = 1.5;
+        for (let i = 0; i < 6; i++) {
+          const side = i % 2 ? 1 : -1, y = MINI_H * 0.62 + ((g.time * 900 + i * 53) % (MINI_H * 0.38));
+          const x = MINI_W / 2 + side * (MINI_W * 0.36 + (i * 17) % 30);
+          c.beginPath(); c.moveTo(x, y); c.lineTo(x + side * 10, y + 22); c.stroke();
+        }
+      }
       if (me.boost > 0) {
         c.fillStyle = '#9be35a';
         for (let i = 0; i < 4; i++) c.fillRect(kx + 24 + i * 16, ky + 63 + Math.random() * 6, 6, 6 + Math.random() * 8);
@@ -3195,7 +3236,7 @@ const Game = (() => {
   // A console like the ones in PC games, only for players in admin mode (unlocked with the code in Friends):
   // ` or F11 opens it, or Settings on phones. For everyone else those keys do nothing here.
   // Every change it makes is saved and sent to the server at once, as the player's real data.
-  const GAME_VERSION = '1.8.2';
+  const GAME_VERSION = '1.8.3';
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const isAdmin = () => !!S.cheats?.unlocked;
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
