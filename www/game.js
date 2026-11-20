@@ -216,7 +216,7 @@ const Game = (() => {
     $('str').textContent = S.str; $('wins').textContent = S.bossWins; $('pokenStat').textContent = (S.poken || 0).toLocaleString(I18n.current());
     const u = Cloud.user();
     $('btnAccount').textContent = u ? u.name : t('guestName');
-    $('btnAdmin').hidden = !cheat('unlocked');
+    $('btnAdmin').hidden = true; // The panel has no button: whoever has the key opens it with 'ui' in the terminal.
     const lowest = Math.min(S.food, S.energy, S.joy);
     $('say').textContent = lowest >= 25 ? (Date.now() < sighUntil ? sighText : '') : S.food === lowest ? t(hasItemFor('food') ? 'hungry' : 'noFood') : S.energy === lowest ? t(hasItemFor('energy') ? 'tired' : 'noEnergy') : t('lonely');
     const need = nextBossLevel();
@@ -3178,7 +3178,7 @@ const Game = (() => {
   // A console like the ones in PC games: ` or F11 opens it (or the admin panel, on phones).
   // Anyone can look around, open screens and change colours; changing the game itself needs
   // sv_cheats 1, which anyone can type (if they know it). `js` runs any JavaScript at all.
-  const GAME_VERSION = '1.4.2';
+  const GAME_VERSION = '1.4.3';
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const svCheats = () => S.svCheats === true;
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
@@ -3239,7 +3239,7 @@ const Game = (() => {
   function typedValue(raw, kind, path) {
     const v = raw.trim();
     if (kind === 'number') {
-      if (!/^-?\d+(\.\d+)?(e\d+)?$/i.test(v)) { termPrint(`SyntaxError: ${path} is a number, '${v}' is not`, 'err'); return undefined; }
+      if (!/^[+-]?\d+(\.\d+)?(e\d+)?$/i.test(v)) { termPrint(`SyntaxError: ${path} is a number, '${v}' is not`, 'err'); return undefined; }
       return Number(v);
     }
     if (kind === 'boolean') {
@@ -3296,7 +3296,9 @@ const Game = (() => {
     const value = typedValue(raw, slot.kind, path);
     if (value === undefined) return;
     if (needCheats()) return;
-    const next = op === '+=' ? slot.read() + value : op === '-=' ? slot.read() - value : value;
+    // "= +x" / "= -x" (or just "+x" / "-x" after the path) add or take away x; a plain number replaces the value.
+    const relative = slot.kind === 'number' && /^[+-]/.test(raw.trim());
+    const next = op === '+=' ? slot.read() + value : op === '-=' ? slot.read() - value : relative ? slot.read() + value : value;
     slot.write(next);
     changed();
     termPrint(`${path} = ${JSON.stringify(slot.read())}`, 'ok');
@@ -3308,7 +3310,7 @@ const Game = (() => {
     skins: () => { shopTab = 'skins'; show('shop'); }, bag: () => openBag(null), inventory: () => openBag(null),
     friends: () => show('friends'), settings: () => show('settings'), achievements: () => show('ach'), ach: () => show('ach'),
     training: () => show('trainMenu'), train: () => show('trainMenu'), bosses: () => show('bosses'), profile: () => openMyProfile(),
-    admin: () => (S.cheats?.unlocked ? openAdmin() : termPrint('the admin panel is locked', 'err')),
+    admin: () => COMMANDS.ui(),
     colors: () => openColors(), colours: () => openColors(), cdplayer: () => openCd(), daily: () => openDaily(),
     name: () => openPetName(), tutorial: () => startTutorial(),
     pong: () => startMini('pong', PIZZA_PONG), rhythm: () => startMini('rhythm', RICE_RHYTHM), catch: () => startMini('catch', RICE_CATCH),
@@ -3380,7 +3382,7 @@ const Game = (() => {
 
   // --- commands ---
   const HELP = [
-    ['help', 'this list'], ['sbuffofetch / neofetch', 'system info, with her head as the logo'],
+    ['help', 'this list'], ['ui', 'open the admin panel (if you have the key)'], ['sbuffofetch / neofetch', 'system info, with her head as the logo'],
     ['open <screen>', `open a screen or window: ${Object.keys(OPENERS).join(', ')}`], ['close', 'close this terminal (or press ` / F11)'],
     ['ls [state|items|cds|skins|achievements|screens]', 'list things'], ['get <path> / <path>', 'show a value, e.g. poken, items.diamond'],
     ['get.items.<item> = <number>', 'set an item, e.g. get.items.poken = 99999, get.items.pizza += 5 (needs sv_cheats 1)'],
@@ -3398,6 +3400,10 @@ const Game = (() => {
   ];
   const COMMANDS = {
     help() { for (const [c, d] of HELP) termHtml(`<span class="tp">${esc(c)}</span>  <span class="dim">${esc(d)}</span>`); },
+    ui() {
+      if (!S.cheats?.unlocked) return termPrint('leave this to the experts...', 'err');
+      closeTerminal(); openAdmin();
+    },
     sbuffofetch: () => fetchLogo(), neofetch: () => fetchLogo(), fastfetch: () => fetchLogo(),
     clear() { $('termOut').replaceChildren(); },
     close: () => closeTerminal(), exit: () => closeTerminal(),
@@ -3491,6 +3497,8 @@ const Game = (() => {
     if (!text) return;
     const m = text.match(/^([\w.\-[\]]+)\s*(\+=|-=|=)\s*(.*)$/);
     if (m && !COMMANDS[m[1]]) return assign(m[1], m[2], m[3]);
+    const rel = text.match(/^(get\.[\w.\-]+)\s+([+-]\s*\S+)$/);
+    if (rel) return assign(rel[1], '=', rel[2].replace(/\s+/g, ''));
     const [cmd, ...restParts] = text.split(/\s+/);
     const rest = text.slice(cmd.length).trim();
     const fn = COMMANDS[cmd.toLowerCase()];
