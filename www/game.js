@@ -3178,7 +3178,7 @@ const Game = (() => {
   // A console like the ones in PC games: ` or F11 opens it (or the admin panel, on phones).
   // Anyone can look around, open screens and change colours; changing the game itself needs
   // sv_cheats 1, which anyone can type (if they know it). `js` runs any JavaScript at all.
-  const GAME_VERSION = '1.4.3';
+  const GAME_VERSION = '1.4.4';
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const svCheats = () => S.svCheats === true;
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
@@ -3319,6 +3319,22 @@ const Game = (() => {
   };
   const COLOR_NAMES = { btn: 'btn', button: 'btn', win: 'win', window: 'win', outline: 'o1', outline1: 'o1', o1: 'o1', outline2: 'o2', o2: 'o2', text: 'text', glow: 'glow' };
 
+  // The real graphics card, as the browser names it (shortened); a plain guess when it won't say.
+  let gpuName = null;
+  function realGpu() {
+    if (gpuName) return gpuName;
+    let name = '';
+    try {
+      const gl = document.createElement('canvas').getContext('webgl');
+      const ext = gl?.getExtension('WEBGL_debug_renderer_info');
+      name = (ext && gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) || gl?.getParameter(gl.RENDERER) || '';
+    } catch { /* no WebGL */ }
+    // "ANGLE (Intel, Intel(R) UHD Graphics 620 (0x00003EA0) Direct3D11 vs_5_0 ps_5_0, D3D11)" -> "Intel UHD Graphics 620"
+    const m = name.match(/^ANGLE \([^,]*,\s*([^,]+?)(?:\s*\(0x[0-9a-f]+\))?\s*(?:Direct3D|OpenGL|Vulkan|Metal|,)/i);
+    name = (m ? m[1] : name).replace(/\((R|TM)\)/gi, '').replace(/\s+/g, ' ').trim();
+    gpuName = name || 'Integrated Graphics';
+    return gpuName;
+  }
   // --- sbuffofetch: her head as the OS logo, drawn from the real sprite with half blocks ---
   function fetchLogo() {
     const img = new Image();
@@ -3366,7 +3382,7 @@ const Game = (() => {
         ['Shell', 'sbsh 1.0'], ['Resolution', `${innerWidth}x${innerHeight}`],
         ['Theme', document.documentElement.classList.contains('modern') ? 'Modern [glass]' : 'Classic [pixel]'],
         ['Skin', esc(t(skinNow().key))], ['CPU', `Poke Bowl Core (${S.str}) @ ${S.streak}-day streak`],
-        ['GPU', 'Rice Rendering RTX 5080'], ['Memory', `food ${Math.round(S.food)}% · energy ${Math.round(S.energy)}% · joy ${Math.round(S.joy)}%`],
+        ['GPU', `Rice Rendering ${esc(realGpu())}`], ['Memory', `food ${Math.round(S.food)}% · energy ${Math.round(S.energy)}% · joy ${Math.round(S.joy)}%`],
         ['Poken', (S.poken || 0).toLocaleString()], ['sv_cheats', svCheats() ? '1' : '0'],
       ].map((r) => (Array.isArray(r) ? `<span class="tp">${r[0]}</span>: ${r[1]}` : r));
       const blocks = ['#231d33', '#e8604c', '#5fcf80', '#ffc857', '#62b6e8', '#c46ad8', '#5fcfb8', '#f6eedd']
