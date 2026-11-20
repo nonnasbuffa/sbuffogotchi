@@ -3195,7 +3195,7 @@ const Game = (() => {
   // A console like the ones in PC games, only for players in admin mode (unlocked with the code in Friends):
   // ` or F11 opens it, or Settings on phones. For everyone else those keys do nothing here.
   // Every change it makes is saved and sent to the server at once, as the player's real data.
-  const GAME_VERSION = '1.8.1';
+  const GAME_VERSION = '1.8.2';
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const isAdmin = () => !!S.cheats?.unlocked;
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
@@ -3549,13 +3549,19 @@ const Game = (() => {
     fill() { S.food = S.energy = S.joy = 100; changed(); termPrint(t('tm_filled'), 'ok'); },
     golden() { closeTerminal(); show('home'); spawnGolden(); },
     js(rest) {
+      // Runs with the save and the game in reach; whatever it returns is printed.
+      // console.log / print inside the code write to the terminal too (and still to the browser console).
+      const fmt = (v) => typeof v === 'string' ? v : JSON.stringify(v, null, 2);
+      const say = (kind) => (...v) => { console[kind](...v); termPrint(v.map(fmt).join(' '), kind === 'error' || kind === 'warn' ? 'err' : ''); };
+      const con = { ...console, log: say('log'), info: say('info'), warn: say('warn'), error: say('error') };
+      const args = ['S', 'Game', 'save', 'render', 'show', 'toast', 'console', 'print'];
+      const vals = [S, window.Game, save, render, show, toast, con, say('log')];
       try {
-        // Runs with the save and the game in reach; whatever it returns is printed.
-        const out = new Function('S', 'Game', 'save', 'render', 'show', 'toast', `return (${rest})`)(S, window.Game, save, render, show, toast);
+        const out = new Function(...args, `return (${rest})`)(...vals);
         if (out !== undefined) termPrint(typeof out === 'string' ? out : JSON.stringify(out, null, 2));
         render();
       } catch (e1) {
-        try { new Function('S', 'Game', 'save', 'render', 'show', 'toast', rest)(S, window.Game, save, render, show, toast); render(); } catch (e2) { termPrint(String(e2), 'err'); }
+        try { new Function(...args, rest)(...vals); render(); } catch (e2) { termPrint(String(e2), 'err'); }
       }
     },
   };
