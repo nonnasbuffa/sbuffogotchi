@@ -54,7 +54,31 @@ def boxer():
     return outlined(im)
 
 
+def ziapuzza():
+    """Short wavy blonde hair from behind, the dark arms of her glasses and a turquoise shirt with pink stars."""
+    im, d = canvas(30, 28)
+    TOP, TOP_D = (54, 196, 196, 255), (30, 140, 146, 255)
+    HAIR, HAIR_L, HAIR_D = (206, 170, 112, 255), (240, 214, 160, 255), (150, 116, 70, 255)
+    d.rectangle([4, 20, 25, 27], fill=TOP)
+    d.rectangle([4, 26, 25, 27], fill=TOP_D)
+    d.rectangle([2, 22, 5, 27], fill=TOP)
+    d.rectangle([24, 22, 27, 27], fill=TOP)
+    for x, y in [(8, 23), (20, 22), (14, 25)]:
+        d.point([(x, y), (x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)], fill=(255, 120, 184, 255))
+    d.rectangle([12, 16, 17, 20], fill=SKIN)  # neck
+    for x, y, r in [(15, 9, 9), (9, 8, 5), (21, 8, 6), (15, 3, 6), (22, 13, 4)]:
+        blob(d, x, y, r, r, HAIR)
+    for x, y in [(10, 5), (15, 3), (19, 6), (12, 10), (18, 11), (22, 12)]:
+        d.point([(x, y), (x + 1, y)], fill=HAIR_L)
+    for x, y in [(8, 11), (13, 7), (17, 9), (20, 15)]:
+        d.point((x, y), fill=HAIR_D)
+    d.rectangle([12, 16, 17, 16], fill=HAIR_D)  # short at the nape
+    d.point([(5, 11), (24, 11)], fill=(40, 40, 52, 255))  # glasses arms
+    return outlined(im)
+
+
 if __name__ == '__main__':
     OUT.mkdir(parents=True, exist_ok=True)
     sbuffling().save(OUT / 'back_default.png')
     boxer().save(OUT / 'back_boxer.png')
+    ziapuzza().save(OUT / 'back_ziapuzza.png')

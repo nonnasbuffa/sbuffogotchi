@@ -54,6 +54,7 @@ const Game = (() => {
   const SKINS = [
     { id: 'default', key: 'skinDefault', icon: 'sprites/skins/default_icon.png', dir: 'sprites', back: 'sprites/wipeuff/back_default.png', price: 0 },
     { id: 'boxer', key: 'skinBoxer', icon: 'sprites/skins/boxer/icon.png', dir: 'sprites/skins/boxer', back: 'sprites/wipeuff/back_boxer.png', price: 10000 },
+    { id: 'ziapuzza', key: 'skinZiaPuzza', icon: 'sprites/skins/ziapuzza/icon.png', dir: 'sprites/skins/ziapuzza', back: 'sprites/wipeuff/back_ziapuzza.png', price: 10000 },
   ];
   // A friend's skin arrives as its folder; this finds its kart picture.
   const skinBack = (dir) => (SKINS.find((s) => s.dir === dir) || SKINS[0]).back;
@@ -3236,7 +3237,7 @@ const Game = (() => {
   // A console like the ones in PC games, only for players in admin mode (unlocked with the code in Friends):
   // ` or F11 opens it, or Settings on phones. For everyone else those keys do nothing here.
   // Every change it makes is saved and sent to the server at once, as the player's real data.
-  const GAME_VERSION = '1.8.3';
+  const GAME_VERSION = '1.9.0';
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const isAdmin = () => !!S.cheats?.unlocked;
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);

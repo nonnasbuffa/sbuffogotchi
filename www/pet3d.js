@@ -20,6 +20,11 @@ window.Pet3D = (() => {
       top: '#a2a2ad', topDark: '#85858f', topPattern: 'hoodie', pants: '#93939e', shoes: '#26232d',
       glasses: null, brows: '#8a8a94', eyes: '#1d191f', stubble: true, scar: true,
     },
+    ziapuzza: {
+      skin: '#f0c4a8', blush: '#ec8c8c', wrinkle: '#c08a6c', wrinkles: 'some', hair: '#cea970', hair2: '#e6cc96', hairStyle: 'wavy',
+      top: '#36c4c4', topDark: '#1e8c92', topPattern: 'stars', pants: '#404868', shoes: '#ececf0',
+      glasses: '#28283a', glassesShape: 'rect', lips: '#d98aa0', brows: '#8a6a44', eyes: '#3c4656', stubble: false, scar: false,
+    },
   };
 
   const mat = (color, rough = 0.5, extra = {}) => new T.MeshStandardMaterial({ color, roughness: rough, metalness: 0, ...extra });
@@ -44,6 +49,16 @@ window.Pet3D = (() => {
       };
       for (const [x, y] of [[104, 72], [128, 56], [152, 72], [128, 90], [44, 66], [212, 66]]) flower(x, y, 4.5);
       g.fillStyle = L.topDark; g.fillRect(0, 112, 256, 16); // ribbed hem
+    } else if (L.topPattern === 'stars') {
+      // Little pink five-pointed stars scattered round the shirt.
+      g.fillStyle = '#ff78b8';
+      const star = (x, y, s) => {
+        g.beginPath();
+        for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + (k * Math.PI) / 5, r = k % 2 ? s * 0.45 : s; g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); }
+        g.closePath(); g.fill();
+      };
+      for (const [x, y] of [[110, 50], [146, 66], [124, 86], [92, 76], [160, 40], [40, 56], [70, 92], [200, 54], [226, 88], [16, 84]]) star(x, y, 7);
+      g.fillStyle = L.topDark; g.fillRect(0, 112, 256, 16);
     } else {
       g.fillStyle = L.topDark; g.fillRect(126, 0, 4, 128); // zip
       g.fillStyle = '#f4f4f4'; g.fillRect(146, 46, 26, 5); g.fillRect(146, 56, 20, 5); // stripes
@@ -211,8 +226,13 @@ window.Pet3D = (() => {
       const gm = mat(L.glasses, 0.3);
       for (const side of [-1, 1]) {
         const x = 0.18 * side, y = -0.02;
-        const ring = mesh(new T.TorusGeometry(0.13, 0.022, 10, 32), gm, x, y, onFace(x, y) + 0.04);
+        // Round frames, or rectangular ones (a four-sided ring turned square, then widened).
+        const rect = L.glassesShape === 'rect';
+        const ring = new T.Group();
+        ring.position.set(x, y, onFace(x, y) + 0.04);
         ring.rotation.y = Math.asin(x / R);
+        const hoop = mesh(new T.TorusGeometry(rect ? 0.16 : 0.13, 0.022, 10, rect ? 4 : 32), gm);
+        if (rect) { hoop.rotation.z = Math.PI / 4; const sq = new T.Group(); sq.scale.set(1.12, 0.78, 1); sq.add(hoop); ring.add(sq); } else ring.add(hoop);
         head.add(ring);
         const lens = mesh(new T.CircleGeometry(0.125, 28), new T.MeshStandardMaterial({ color: '#ffffff', roughness: 0.05, transparent: true, opacity: 0.12, depthWrite: false }), x, y, onFace(x, y) + 0.04);
         lens.rotation.y = Math.asin(x / R);
@@ -283,7 +303,7 @@ window.Pet3D = (() => {
     // A small round nose.
     head.add(mesh(ball(0.04, 16), mat(L.skin, 0.5), 0, -0.1, onFace(0, -0.1) + 0.02));
     // Mouths, one per mood; only one shows at a time.
-    const mouthMat = mat('#7b2f2b', 0.5);
+    const mouthMat = mat(L.lips || '#7b2f2b', 0.5);
     const mouthAt = (m, y) => { m.position.set(0, y, onFace(0, y) + 0.005); return m; };
     const mouths = {
       idle: mouthAt(mesh(new T.TorusGeometry(0.055, 0.013, 8, 20, Math.PI), mouthMat), -0.2),
@@ -326,6 +346,21 @@ window.Pet3D = (() => {
         const curl = mesh(ball(0.17 + rnd() * 0.06, 20), rnd() < 0.5 ? m1 : m2, p.x, p.y, p.z);
         head.add(curl);
       }
+    } else if (L.hairStyle === 'wavy') {
+      // Short wavy hair: a cap with soft waves on top, swept over to one side and short at the back.
+      const m1 = mat(L.hair, 0.55), m2 = mat(L.hair2, 0.5);
+      head.add(mesh(new T.SphereGeometry(R * 1.04, 40, 20, 0, Math.PI * 2, 0, 1.25), m1));
+      // Back and sides come down further, so it's a full short cut rather than a cap.
+      const back = mesh(new T.SphereGeometry(R * 1.05, 40, 20, Math.PI / 2 + 1.15, Math.PI * 2 - 2.3, 0, 1.95), m1);
+      head.add(back);
+      for (const side of [-1, 1]) for (const [y, z, rr] of [[0.2, 0.0, 0.15], [0.05, -0.08, 0.14], [0.22, -0.2, 0.15]]) head.add(mesh(ball(rr, 18), m1, 0.4 * side, y, z));
+      // A wavy fringe swept across the forehead to her left.
+      for (const [x, y, z, rr] of [[-0.2, 0.36, 0.22, 0.11], [-0.04, 0.34, 0.3, 0.12], [0.13, 0.31, 0.31, 0.12], [0.28, 0.25, 0.27, 0.12], [0.37, 0.12, 0.2, 0.11]]) head.add(mesh(ball(rr, 18), m2, x, y, z));
+      const waves = [[-0.3, 0.33, 0.08, 0.13], [-0.12, 0.43, 0.12, 0.14], [0.08, 0.44, 0.13, 0.15], [0.26, 0.36, 0.14, 0.15],
+        [0.38, 0.2, 0.1, 0.14], [0.42, 0.02, 0.0, 0.12], [0.2, 0.3, 0.24, 0.12], [0.04, 0.33, 0.27, 0.1],
+        [-0.2, 0.36, -0.12, 0.15], [0.1, 0.38, -0.2, 0.16], [-0.38, 0.15, -0.05, 0.12], [0.35, 0.18, -0.15, 0.14]];
+      waves.forEach(([x, y, z, rr], i) => head.add(mesh(ball(rr, 18), i % 3 ? m1 : m2, x, y, z)));
+      for (const side of [-1, 1]) head.add(mesh(ball(0.09, 16), skinMat, R * 1.04 * side, -0.04, 0)); // ears
     } else {
       const hm = mat(L.hair, 0.9);
       const cap = mesh(new T.SphereGeometry(R * 1.035, 40, 20, 0, Math.PI * 2, 0, 1.2), hm);
