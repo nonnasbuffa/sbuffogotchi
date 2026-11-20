@@ -738,6 +738,18 @@ const Game = (() => {
       note.onclick = async () => { await Notify.setEnabled(!Notify.enabled()); renderSettings(); };
       list.append(note);
     }
+    // Look: the classic pixel interface, or the modern rounded and glowing one. Saved on this device.
+    const modern = document.documentElement.classList.contains('modern');
+    const look = document.createElement('button');
+    look.textContent = `${t('uiLook')}: ${t(modern ? 'uiModern' : 'uiClassic')}`;
+    if (modern) look.className = 'picked';
+    look.onclick = () => {
+      const on = !document.documentElement.classList.contains('modern');
+      document.documentElement.classList.toggle('modern', on);
+      try { localStorage.setItem('sbuffogotchi.look', on ? 'modern' : 'classic'); } catch { /* lasts until the app closes */ }
+      renderSettings();
+    };
+    list.append(look);
     const gifts = document.createElement('button');
     gifts.textContent = `${t('giftSetting')}: ${t({ ask: 'giftModeAsk', auto: 'giftModeAuto', off: 'giftModeOff' }[giftMode()])}`;
     gifts.onclick = () => {
