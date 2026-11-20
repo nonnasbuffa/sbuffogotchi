@@ -3178,7 +3178,7 @@ const Game = (() => {
   // A console like the ones in PC games: ` or F11 opens it (or the admin panel, on phones).
   // Anyone can look around, open screens and change colours; changing the game itself needs
   // sv_cheats 1, which anyone can type (if they know it). `js` runs any JavaScript at all.
-  const GAME_VERSION = '1.4.4';
+  const GAME_VERSION = '1.4.5';
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const svCheats = () => S.svCheats === true;
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
@@ -3330,6 +3330,12 @@ const Game = (() => {
       name = (ext && gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) || gl?.getParameter(gl.RENDERER) || '';
     } catch { /* no WebGL */ }
     // "ANGLE (Intel, Intel(R) UHD Graphics 620 (0x00003EA0) Direct3D11 vs_5_0 ps_5_0, D3D11)" -> "Intel UHD Graphics 620"
+    // Firefox hides the real card behind a stand-in model and adds ", or similar": then only the brand is true.
+    if (/or similar/i.test(name)) {
+      const brand = (name.match(/NVIDIA|AMD|Radeon|Intel|Apple|Adreno|Mali|PowerVR/i) || ['GPU'])[0].replace(/radeon/i, 'AMD');
+      gpuName = `${brand} (model hidden by your browser)`;
+      return gpuName;
+    }
     const m = name.match(/^ANGLE \([^,]*,\s*([^,]+?)(?:\s*\(0x[0-9a-f]+\))?\s*(?:Direct3D|OpenGL|Vulkan|Metal|,)/i);
     name = (m ? m[1] : name).replace(/\((R|TM)\)/gi, '').replace(/\s+/g, ' ').trim();
     gpuName = name || 'Integrated Graphics';
