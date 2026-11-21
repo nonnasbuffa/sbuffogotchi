@@ -427,7 +427,7 @@ window.Pet3D = (() => {
     torsoGroup.scale.set(1, 1, 1);
     arms.forEach((a, i) => a.rotation.set(0, 0, 0.3 * (i ? 1 : -1)));
     legs.forEach((l) => l.rotation.set(0, 0, 0));
-    let browTilt = 0, browY = 0;
+    let browTilt = 0, browY = 0, eyesHalf = false, mouthFace = null;
     const mood = v.anim;
     if (mood === 'idle') {
       // A gentle springy breath: the body squashes a little and the head follows a beat later.
@@ -458,6 +458,34 @@ window.Pet3D = (() => {
       arms.forEach((a, i) => { a.rotation.z = 0.08 * (i ? 1 : -1); a.rotation.x = 0.15; });
       torsoGroup.scale.set(1.02, 0.97, 1.02);
       browTilt = -0.35;
+    } else if (mood === 'sigh') {
+      // Sbuffare: a big breath in (shoulders up, chest out), then a long puff out as she sags, eyes half shut.
+      const ph = (t % 2) / 2;
+      const inhale = ph < 0.35 ? Math.sin((ph / 0.35) * Math.PI / 2) : Math.cos(((ph - 0.35) / 0.65) * Math.PI / 2);
+      torsoGroup.scale.set(1 + inhale * 0.05, 1 + inhale * 0.04 - (1 - inhale) * 0.02, 1 + inhale * 0.05);
+      head.position.y = HEAD_Y + inhale * 0.05 - (1 - inhale) * 0.03;
+      head.rotation.x = -inhale * 0.15 + (1 - inhale) * 0.12;
+      arms.forEach((a, i) => { a.rotation.z = (i ? 1 : -1) * (0.3 + inhale * 0.15); });
+      root.rotation.y = Math.sin(t * 0.5) * 0.1;
+      browTilt = -0.15; eyesHalf = true;
+    } else if (mood === 'cold') {
+      // Brr: hugging herself and shivering, teeth chattering.
+      root.rotation.z = Math.sin(t * 55) * 0.025;
+      root.position.x = Math.sin(t * 47) * 0.015;
+      torsoGroup.scale.set(0.97, 0.98, 0.97);
+      head.position.y = HEAD_Y - 0.05;
+      arms.forEach((a, i) => { a.rotation.x = -0.9; a.rotation.z = (i ? -1 : 1) * 0.55; });
+      legs.forEach((l, i) => { l.rotation.z = (i ? 1 : -1) * 0.08; });
+      browTilt = -0.25; mouthFace = (t * 12) % 1 < 0.5 ? 'battle' : 'sad';
+    } else if (mood === 'hot') {
+      // Sweating: head tipped back, fanning herself with one hand, swaying in the heat.
+      head.rotation.x = -0.18;
+      head.rotation.z = Math.sin(t * 1.4) * 0.08;
+      root.rotation.z = Math.sin(t * 1.4) * 0.04;
+      arms[1].rotation.z = 2.2 + Math.sin(t * 16) * 0.35;
+      arms[1].rotation.x = -0.5;
+      arms[0].rotation.z = -0.25;
+      browTilt = -0.2; eyesHalf = true; mouthFace = 'happy';
     } else if (mood === 'walk') {
       // A waddling walk: legs and arms swing, the body rocks side to side.
       const w = t * 9;
@@ -483,11 +511,11 @@ window.Pet3D = (() => {
     }
     // Face: brows, the right mouth, eyes, and a blink now and then.
     m.brows.forEach((br, i) => { const s = i ? 1 : -1; br.rotation.z = Math.PI / 2 + browTilt * s; br.position.y = 0.19 + browY; });
-    const face = m.mouths[mood] ? mood : 'idle';
+    const face = mouthFace || (m.mouths[mood] ? mood : 'idle');
     for (const [k, mo] of Object.entries(m.mouths)) mo.visible = k === face;
     if (now > v.blinkAt + 130) v.blinkAt = now + 2200 + Math.random() * 2600;
     const blink = now >= v.blinkAt && now < v.blinkAt + 130;
-    m.eyes.forEach((e) => { e.visible = mood !== 'happy'; e.scale.y = blink ? 0.12 : 1; });
+    m.eyes.forEach((e) => { e.visible = mood !== 'happy'; e.scale.y = blink ? 0.12 : eyesHalf ? 0.45 : 1; });
     m.happyEyes.forEach((e) => { e.visible = mood === 'happy'; });
   }
 

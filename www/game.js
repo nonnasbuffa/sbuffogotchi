@@ -14,7 +14,13 @@ const Game = (() => {
     happy: [110, 70, 90, 110, 70, 60, 110, 140],
     sad: [700, 600, 180, 600],
     battle: [600, 400, 300, 400],
+    // Her sighs: these play the idle frames, and CSS adds the motion (a puff of breath, shivers, sweat).
+    sigh: [500, 450, 500, 140, 500, 450, 500, 140],
+    cold: [500, 450, 500, 140, 500, 450, 500, 140],
+    hot: [500, 450, 500, 140, 500, 450, 500, 140],
   };
+  // Which sprite sheet each animation uses.
+  const SHEET = { sigh: 'idle', cold: 'idle', hot: 'idle' };
   const BOSSES = [
     { key: 'bossBroccoli', art: 'broccoli' },
     { key: 'bossSprout', art: 'sprout' },
@@ -178,6 +184,7 @@ const Game = (() => {
   function play(el, name, thenIdle) {
     clearTimeout(players.get(el));
     const times = ANIMS[name];
+    el.dataset.mood = name; // CSS adds the sighs' effects on top
     // Modern look: she's a 3D model instead of the pixel sprite.
     if (window.Pet3D && use3d()) {
       Pet3D.play(el, name, thenIdle, skinNow().id, thenIdle ? times.reduce((a, b) => a + b, 0) : 0);
@@ -186,14 +193,16 @@ const Game = (() => {
     }
     window.Pet3D?.remove(el);
     if (el.id === 'pet') window.Pet3D?.removeRoom(el.parentElement);
-    el.style.backgroundImage = `url(${skinNow().dir}/${name}_sheet.png)`;
+    const sheet = SHEET[name] || name;
+    const frames = ANIMS[sheet].length;
+    el.style.backgroundImage = `url(${skinNow().dir}/${sheet}_sheet.png)`;
     let i = 0;
     const step = () => {
       if (i >= times.length) {
         if (thenIdle) return play(el, thenIdle);
         i = 0;
       }
-      el.style.backgroundPosition = `${-44 * i}px 0`;
+      el.style.backgroundPosition = `${-44 * (i % frames)}px 0`;
       players.set(el, setTimeout(step, times[i++]));
     };
     step();
@@ -674,7 +683,8 @@ const Game = (() => {
 
   // ----- her sighs -----
   // Every one to three minutes on the home screen she lets out a sigh, in Italian whatever the language.
-  // "Uff" and "uffa" come with her real sigh.
+  // "Uff" and "uffa" come with her real sigh. Each line has its own animation:
+  // uff / uffa / Ufla: she sbuffa (a big breath out). Brr: she shivers. Sweating: she's too hot.
   const ufSound = new Audio('sounds/uf.mp4');
   let sighText = '', sighUntil = 0;
   function seasonWord() {
@@ -686,11 +696,16 @@ const Game = (() => {
   function sigh() {
     setTimeout(sigh, 60000 + Math.random() * 120000);
     if (document.hidden || !$('s-home').classList.contains('on') || document.querySelector('.modal.on') || tutorialOn() || isDead()) return;
+    sighNow();
+  }
+  // word: one of her lines, or a random one.
+  function sighNow(word) {
     const words = ['uff..', 'uffa!', seasonWord()];
-    sighText = words[Math.floor(Math.random() * words.length)];
+    sighText = word || words[Math.floor(Math.random() * words.length)];
     sighUntil = Date.now() + 4000;
     render();
-    play($('pet'), 'sad', restingAnim());
+    const mood = sighText === 'Brr!' ? 'cold' : sighText.startsWith('Sto') ? 'hot' : 'sigh';
+    play($('pet'), mood, restingAnim());
     if (sighText.startsWith('uff') && Music.enabled()) { ufSound.currentTime = 0; ufSound.play().catch(() => {}); }
     setTimeout(() => { if (Date.now() >= sighUntil && $('s-home').classList.contains('on')) render(); }, 4100);
   }
@@ -3237,7 +3252,7 @@ const Game = (() => {
   // A console like the ones in PC games, only for players in admin mode (unlocked with the code in Friends):
   // ` or F11 opens it, or Settings on phones. For everyone else those keys do nothing here.
   // Every change it makes is saved and sent to the server at once, as the player's real data.
-  const GAME_VERSION = '1.9.2';
+  const GAME_VERSION = '1.9.3';
   window.GAME_VERSION = GAME_VERSION; // read by updater.js to see if the phone app is behind
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const isAdmin = () => !!S.cheats?.unlocked;
@@ -3514,7 +3529,10 @@ const Game = (() => {
     ['open <screen>', 'h_open'],
     ['look modern|classic|2d|3d', 'h_look'], ['color <btn|win|outline1|outline2|text|glow> <#hex>', 'h_color'],
     ['lang en|es|it', 'h_lang'], ['music on|off', 'h_music'], ['play <cd> / stop', 'h_play'],
-    ['say <text>', 'h_say'], ['toast <text>', 'h_toast'], ['js <code>', 'h_js'],
+    ['mood idle|happy|sad|battle|sigh|cold|hot', 'h_mood'], ['sigh [uff|uffa|brr|hot]', 'h_sigh'], ['party', 'h_party'],
+    ['say <text>', 'h_say'], ['toast <text>', 'h_toast'], ['sbuffsay <text>', 'h_sbuffsay'], ['fortune', 'h_fortune'],
+    ['top', 'h_top'], ['calc <maths>', 'h_calc'], ['man <command>', 'h_man'], ['ping', 'h_ping'], ['version / update', 'h_update'],
+    ['js <code>', 'h_js'],
     ['history, echo, date, whoami, uname -a, pwd, reboot', 'h_usual'],
   ];
   const COMMANDS = {
@@ -3590,6 +3608,94 @@ const Game = (() => {
       termPrint(`${id} = ${S.items[id]}`, 'ok');
     },
     fill() { S.food = S.energy = S.joy = 100; changed(); termPrint(t('tm_filled'), 'ok'); },
+    // Plays one of her animations on the home screen.
+    mood(rest) {
+      const name = rest.trim().toLowerCase();
+      if (!ANIMS[name]) return termPrint(t('tm_usage', { x: `mood ${Object.keys(ANIMS).join('|')}` }), 'err');
+      show('home'); play($('pet'), name, restingAnim());
+      termPrint(`mood = ${name}`, 'ok');
+    },
+    // She sighs right now: sigh, sigh uff, sigh brr, sigh hot.
+    sigh(rest) {
+      const pick = { uff: 'uff..', uffa: 'uffa!', brr: 'Brr!', cold: 'Brr!', hot: 'Sto in un bagno di sudore..', ufla: 'Ufla!' }[rest.trim().toLowerCase()];
+      show('home'); sighNow(pick);
+      termPrint(`"${sighText}"`, 'ok');
+    },
+    // Like cowsay, with her face.
+    sbuffsay(rest) {
+      const text = rest || 'uff...';
+      const lines = [];
+      for (let i = 0; i < text.length; i += 36) lines.push(text.slice(i, i + 36));
+      const w = Math.max(...lines.map((l) => l.length));
+      const out = [` ${'_'.repeat(w + 2)}`];
+      lines.forEach((l, i) => {
+        const [a, b] = lines.length === 1 ? ['<', '>'] : i === 0 ? ['/', '\\'] : i === lines.length - 1 ? ['\\', '/'] : ['|', '|'];
+        out.push(`${a} ${l.padEnd(w)} ${b}`);
+      });
+      out.push(` ${'-'.repeat(w + 2)}`,
+        '      \\    @@@@@@@',
+        '       \\  @@@@@@@@@',
+        '         @(o)-(o)@',
+        '         @  (_)  @',
+        '          \\ ~~~ /',
+        '           `---\'');
+      termPrint(out.join('\n'));
+    },
+    fortune() {
+      const SAYINGS = ['Chi dorme non piglia pesci.', 'Meglio un uovo oggi che una gallina domani.', 'Chi va piano va sano e va lontano.',
+        'Rosso di sera, bel tempo si spera.', 'Non tutte le ciambelle riescono col buco.', "A tavola non s'invecchia.",
+        "L'appetito vien mangiando.", 'Uff... ai miei tempi era tutto diverso.', 'Mangia, che sei sciupato!', 'Metti la maglia, che fa freddo!',
+        'Chi trova un amico trova un tesoro.', 'Il riso fa buon sangue.'];
+      termPrint(`🔮 ${SAYINGS[Math.floor(Math.random() * SAYINGS.length)]}`);
+    },
+    // Her stats as a process list.
+    top() {
+      const bar = (v) => `[${'|'.repeat(Math.round(v / 5)).padEnd(20)}] ${String(Math.round(v)).padStart(3)}%`;
+      termHtml(`<span class="tp">  PID  PROCESS        USAGE</span>`);
+      [['food', S.food], ['energy', S.energy], ['joy', S.joy]].forEach(([k, v], i) => termPrint(`${String(100 + i).padStart(5)}  ${k.padEnd(14)} ${bar(v)}`));
+      termPrint(`  103  level          ${S.level}  (xp ${S.xp})`);
+      termPrint(`  104  strength       ${S.str}`);
+      termPrint(`  105  streak         ${(S.streak || 0).toLocaleString()} days`);
+      termPrint(`  106  poken          ${fmtPoken(S.poken || 0)}`);
+    },
+    // Plain maths, no JavaScript needed: calc (2+3)*4
+    calc(rest) {
+      const expr = rest.replace(/\s+/g, '').replace(/x/gi, '*').replace(/\^/g, '**');
+      if (!expr || !/^[\d.+\-*/%()]+$/.test(expr)) return termPrint(t('tm_usage', { x: 'calc 2+3*4  (+ - * / % ^ and brackets)' }), 'err');
+      try {
+        const v = new Function(`return (${expr})`)();
+        if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error();
+        termPrint(`= ${+v.toFixed(10)}`, 'ok');
+      } catch { termPrint(t('tm_calcBad'), 'err'); }
+    },
+    // What one command does.
+    man(rest) {
+      const name = rest.trim().split(/\s+/)[0];
+      if (!name) return termPrint(t('tm_usage', { x: 'man <command>' }), 'err');
+      const hits = HELP.filter(([c]) => c.split(/[\s.,/|<]/)[0] === name || c.startsWith(`${name} `) || c.startsWith(`${name}.`) || c.includes(`, ${name}`));
+      if (!hits.length) return termPrint(t('tm_noMan', { x: name }), 'err');
+      for (const [c, d] of hits) termHtml(`<span class="tp">${esc(c)}</span>\n  <span class="dim">${esc(t(d, { list: Object.keys(OPENERS).join(', ') }))}</span>`);
+    },
+    ping() {
+      const t0 = performance.now();
+      fetch(`https://sbuffogotchi.web.app/version.json?t=${Date.now()}`, { cache: 'no-store', mode: 'no-cors' })
+        .then(() => termPrint(`PONG from nonna: time=${Math.round(performance.now() - t0)} ms`, 'ok'))
+        .catch(() => termPrint(t('tm_offline'), 'err'));
+    },
+    version() { termPrint(`Sbuffogotchi v${GAME_VERSION}`); },
+    // Phone apps: looks for a new version now. Everywhere else the game is already the newest.
+    update() {
+      if (!window.Capacitor?.isNativePlatform?.()) return termPrint(t('tm_updWeb', { v: GAME_VERSION }), 'ok');
+      termPrint(t('tm_updChecking'));
+      window.Updater?.check(true);
+    },
+    // A little dance party.
+    party() {
+      closeTerminal(); show('home');
+      play($('pet'), 'happy', restingAnim());
+      document.body.animate([{ filter: 'hue-rotate(0deg)' }, { filter: 'hue-rotate(360deg)' }], { duration: 1500, iterations: 3 });
+      toast('🎉🎶');
+    },
     golden() { closeTerminal(); show('home'); spawnGolden(); },
     js(rest) {
       // Runs with the save and the game in reach; whatever it returns is printed.
