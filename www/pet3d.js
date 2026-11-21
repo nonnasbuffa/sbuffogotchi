@@ -14,6 +14,7 @@ window.Pet3D = (() => {
       skin: '#eebd96', blush: '#f08f8f', wrinkle: '#b97c5c', wrinkles: 'lots', hair: '#2a2433', hair2: '#3a3147', hairStyle: 'afro',
       top: '#1e6a55', topDark: '#174f40', topPattern: 'flowers', pants: '#2f2b45', shoes: '#74462f',
       glasses: '#f29cc0', brows: '#3a2a28', eyes: '#2a1c19', stubble: false, scar: false,
+      girth: 1.25, round: true, // a wide, ball-shaped body (the other skins: girth 1, not round)
     },
     boxer: {
       skin: '#efc09b', blush: '#e99a86', wrinkle: '#c08a6c', wrinkles: 'some', hair: '#cdcdd6', hair2: '#b9b9c4', hairStyle: 'buzz',
@@ -91,6 +92,7 @@ window.Pet3D = (() => {
     shadow.rotation.x = -Math.PI / 2; shadow.scale.set(1, 0.6, 1);
     root.add(shadow);
 
+    const G = L.girth || 1;
     const body = new T.Group(); // everything that bounces
     root.add(body);
 
@@ -98,8 +100,8 @@ window.Pet3D = (() => {
     const legs = [];
     for (const side of [-1, 1]) {
       const leg = new T.Group();
-      leg.position.set(0.17 * side, 0.2, 0);
-      leg.add(mesh(capsule(0.12, 0.05), mat(L.pants, 0.7), 0, -0.03, 0));
+      leg.position.set(0.17 * G * side, 0.2, 0);
+      leg.add(mesh(capsule(0.12 * (1 + (G - 1) * 0.6), 0.05), mat(L.pants, 0.7), 0, -0.03, 0));
       const shoe = mesh(ball(0.12), mat(L.shoes, 0.45), 0, -0.11, 0.045);
       shoe.scale.set(1, 0.7, 1.45);
       leg.add(shoe);
@@ -113,8 +115,11 @@ window.Pet3D = (() => {
     // and wider than it is deep, like a real person rather than a ball.
     const torsoGroup = new T.Group();
     body.add(torsoGroup);
-    const profile = [[0, 0.1], [0.3, 0.11], [0.42, 0.17], [0.46, 0.26], [0.46, 0.36], [0.43, 0.46], [0.39, 0.54], [0.36, 0.6], [0.3, 0.65], [0.18, 0.69], [0, 0.7]]
-      .map(([x, y]) => new T.Vector2(x, y));
+    // Rounder when L.round is set: a ball-shaped torso, as deep as it is wide.
+    const profile = (L.round
+      ? [[0, 0.1], [0.22, 0.11], [0.35, 0.15], [0.43, 0.22], [0.47, 0.31], [0.47, 0.4], [0.44, 0.49], [0.38, 0.57], [0.3, 0.63], [0.18, 0.68], [0, 0.7]]
+      : [[0, 0.1], [0.3, 0.11], [0.42, 0.17], [0.46, 0.26], [0.46, 0.36], [0.43, 0.46], [0.39, 0.54], [0.36, 0.6], [0.3, 0.65], [0.18, 0.69], [0, 0.7]])
+      .map(([x, y]) => new T.Vector2(x * (y < 0.66 ? G : 1 + (G - 1) * 0.5), y));
     const torsoGeo = new T.LatheGeometry(profile, 48);
     {
       const pos = torsoGeo.attributes.position, v = new T.Vector3();
@@ -123,11 +128,11 @@ window.Pet3D = (() => {
         const rr = Math.hypot(v.x, v.z);
         if (rr < 1e-4) continue;
         const front = Math.max(0, v.z / rr);
-        const belly = Math.exp(-((v.y - 0.29) ** 2) / (2 * 0.1 ** 2)) * front ** 1.5 * 0.08;
+        const belly = Math.exp(-((v.y - 0.29) ** 2) / (2 * 0.1 ** 2)) * front ** 1.5 * 0.08 * G * G;
         const bust = Math.exp(-((v.y - 0.5) ** 2) / (2 * 0.06 ** 2)) * front ** 2 * 0.05;
         const k = (rr + belly + bust) / rr;
         v.x *= k; v.z *= k;
-        v.z *= v.z < 0 ? 0.78 : 0.9; // a flatter back
+        v.z *= L.round ? (v.z < 0 ? 0.95 : 1) : (v.z < 0 ? 0.78 : 0.9); // a flatter back, unless she's round
         pos.setXYZ(i, v.x, v.y, v.z);
       }
       torsoGeo.computeVertexNormals();
@@ -146,8 +151,8 @@ window.Pet3D = (() => {
     const arms = [];
     for (const side of [-1, 1]) {
       const arm = new T.Group();
-      arm.position.set(0.37 * side, 0.6, 0);
-      arm.add(mesh(capsule(0.085, 0.2), mat(L.top, 0.75), 0, -0.14, 0));
+      arm.position.set((0.37 + (G - 1) * 0.42) * side, 0.6, 0);
+      arm.add(mesh(capsule(0.085 * (1 + (G - 1) * 0.6), 0.2), mat(L.top, 0.75), 0, -0.14, 0));
       const cuff = mesh(new T.TorusGeometry(0.08, 0.022, 10, 20), mat(L.topDark, 0.8), 0, -0.26, 0);
       cuff.rotation.x = Math.PI / 2;
       arm.add(cuff);
@@ -328,24 +333,88 @@ window.Pet3D = (() => {
 
     // Hair
     if (L.hairStyle === 'afro') {
-      // A big soft cloud of curls round the top, sides and back; one side is mirrored so it's even.
-      const m1 = mat(L.hair, 0.42), m2 = mat(L.hair2, 0.5);
+      // Like her photos: black hair in tight spiral ringlets that fall to her jaw, fullest at the sides,
+      // with short frizzy coils on top. Each ringlet is a little corkscrew tube.
+      const m1 = mat(L.hair, 0.85), m2 = mat(L.hair2, 0.75);
       let seed = 11;
       const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
-      // Curls spread evenly over a ball around the head, so her outline stays perfectly round.
-      const C = new T.Vector3(0, 0.07, -0.05), HR = 0.56;
-      head.add(mesh(ball(HR - 0.1, 32), m1, C.x, C.y + 0.02, C.z - 0.08)); // fills the gaps between curls, behind the face
-      const N = 64;
+      // A dark base over the top, sides and back, so nothing shows between the curls.
+      // Puffed out wider than her head, like the volume in the photos.
+      // Kept small and hidden under the curls, so no smooth hair shows anywhere.
+      const base = mesh(new T.SphereGeometry(R * 1.1, 40, 24, 0, Math.PI * 2, 0, 1.2), m1, 0, 0.04, -0.05);
+      base.scale.set(1.12, 1.04, 1.06);
+      head.add(base);
+      const back = mesh(ball(R * 1.02, 28), m1, 0, -0.08, -0.22);
+      back.scale.set(1.35, 1.05, 0.95);
+      head.add(back);
+      const down = new T.Vector3(0, -1, 0), up = new T.Vector3(0, 1, 0);
+      const coil = (len, coilR, tubeR, turns) => {
+        const pts = [];
+        const n = Math.max(12, Math.round(turns * 10));
+        for (let i = 0; i <= n; i++) {
+          const k = i / n, ang = k * turns * Math.PI * 2;
+          // Wider at the root, tighter towards the tip, like a real ringlet.
+          const r = coilR * (1.15 - k * 0.35);
+          pts.push(new T.Vector3(Math.cos(ang) * r, -k * len, Math.sin(ang) * r));
+        }
+        return new T.TubeGeometry(new T.CatmullRomCurve3(pts), n * 2, tubeR, 6, false);
+      };
+      const N = 420;
       for (let i = 0; i < N; i++) {
+        // Points spread evenly over the head.
         const y = 1 - (2 * (i + 0.5)) / N;
-        const rr = Math.sqrt(1 - y * y), a = i * 2.39996;
-        const d = new T.Vector3(Math.cos(a) * rr, y, Math.sin(a) * rr);
-        const p = d.clone().multiplyScalar(HR + rnd() * 0.07).add(C); // some curls sit further out: a puffy outline
-        if (p.z > 0.12 && p.y < 0.45) continue; // keep the face and forehead clear
-        if (p.y < -0.32) continue; // stops above the jaw
-        const curl = mesh(ball(0.17 + rnd() * 0.06, 20), rnd() < 0.5 ? m1 : m2, p.x, p.y, p.z);
-        head.add(curl);
+        const rr = Math.sqrt(1 - y * y), ang = i * 2.39996;
+        const d = new T.Vector3(Math.cos(ang) * rr, y, Math.sin(ang) * rr);
+        if (y < 0.22) continue; // the sides come from the rows of ringlets below
+        if (d.z > 0.35 && y < 0.36 && Math.abs(d.x) < 0.75) continue; // keep her face and forehead clear
+        const root = d.clone().multiplyScalar(R * 1.2).multiply(new T.Vector3(1.12, 1, 1.05)).add(new T.Vector3(0, 0.02, -0.02));
+        let len, axis, coilR, tubeR;
+        // Every curl lies along the head and falls downwards with gravity (nothing sticks straight out).
+        const flow = down.clone().sub(d.clone().multiplyScalar(down.dot(d)));
+        if (flow.lengthSq() < 0.01) flow.set(d.x || 0.01, 0, d.z || 0.01);
+        flow.normalize();
+        if (y > 0.3) { // on top: short curls lying flat on the head, combed down towards the sides
+          len = 0.12 + rnd() * 0.08; axis = flow.clone().add(d.clone().multiplyScalar(0.4)).normalize(); coilR = 0.042; tubeR = 0.027;
+        } else { // ringlets hanging down the sides and back, longest at the sides
+          const side = Math.abs(d.x);
+          // They stop around her jaw, as in the photos, and spring outwards for volume at the sides.
+          len = 0.16 + (0.3 - y) * 0.28 + side * 0.06 + rnd() * 0.08;
+          axis = d.clone().multiplyScalar(0.5 + side * 0.6).add(down).normalize();
+          coilR = 0.045 + rnd() * 0.012; tubeR = 0.027 + rnd() * 0.006;
+        }
+        const m = mesh(coil(len, coilR, tubeR, len * (9 + rnd() * 4)), rnd() < 0.55 ? m1 : m2, root.x, root.y, root.z);
+        // The coil is built hanging along -Y; turn it to its axis and spin it a little so they don't all match.
+        m.quaternion.setFromUnitVectors(down, axis);
+        m.rotateY(rnd() * Math.PI * 2);
+        head.add(m);
       }
+      // The sides and back: rows of ringlets hanging from a smooth bell shape that widens a little towards the jaw,
+      // so the hair is full but stays one rounded shape (no bunches sticking out). The face stays open at the front.
+      // Two layers: an outer one and an inner one just inside it, so the sides are thick.
+      // Close to her head, so there is no gap between her cheeks and the curls.
+      const bell = [[0.4, 0.56], [0.3, 0.6], [0.19, 0.62], [0.08, 0.63], [-0.03, 0.63], [0.34, 0.52], [0.22, 0.55], [0.1, 0.56], [-0.02, 0.56], [-0.12, 0.6]];
+      bell.forEach(([h, rad], row) => {
+        const n = 32;
+        for (let j = 0; j < n; j++) {
+          const th = (j + (row % 2) * 0.5) / n * Math.PI * 2; // 0 = straight ahead
+          if (Math.abs(((th + Math.PI) % (Math.PI * 2)) - Math.PI) < 0.92) continue; // open only where her face is
+          const dir = new T.Vector3(Math.sin(th), 0, Math.cos(th));
+          const root = dir.clone().multiplyScalar(rad + rnd() * 0.03).add(new T.Vector3(0, h, -0.04));
+          root.x *= 1.06;
+          const len = h + 0.44 + rnd() * 0.1; // down past her jaw, like in the photos
+          const m = mesh(coil(len, 0.05, 0.03, len * (10 + rnd() * 3)), rnd() < 0.55 ? m1 : m2, root.x, root.y, root.z);
+          m.quaternion.setFromUnitVectors(down, dir.clone().multiplyScalar(0.18).add(down).normalize());
+          m.rotateY(rnd() * Math.PI * 2);
+          head.add(m);
+        }
+      });
+      // A few loose curls framing the forehead, like in the photos.
+      for (const [x, yy, zz, len] of [[-0.3, 0.36, 0.3, 0.14], [-0.12, 0.44, 0.33, 0.1], [0.1, 0.45, 0.33, 0.11], [0.29, 0.37, 0.31, 0.13]]) {
+        const m = mesh(coil(len, 0.026, 0.016, len * 11), m2, x, yy, zz);
+        m.quaternion.setFromUnitVectors(down, new T.Vector3(x * 0.6, -1, 0.35).normalize());
+        head.add(m);
+      }
+      void up;
     } else if (L.hairStyle === 'wavy') {
       // Short wavy hair: a cap with soft waves on top, swept over to one side and short at the back.
       const m1 = mat(L.hair, 0.55), m2 = mat(L.hair2, 0.5);
