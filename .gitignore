@@ -10,3 +10,11 @@ Payload/
 .firebase/
 *-debug.log
 screenshots/
+hosting/
+*.exe
+*.jar
+.gradle/
+windows/dist/
+windows/app/
+minecraft-mod/build/
+minecraft-mod/run/

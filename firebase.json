@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "public": "www",
+    "public": "hosting",
     "ignore": [
       "firebase.json",
       "**/.*"
@@ -15,6 +15,9 @@
           }
         ]
       }
+    ],
+    "predeploy": [
+      "node tools/build_hosting.js"
     ]
   },
   "firestore": {
