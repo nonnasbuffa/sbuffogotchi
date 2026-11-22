@@ -1,4 +1,4 @@
-// Chat with her: a terminal-style window where the player talks to their Sbuffling.
+// Chat with Sbuffector, the robot version of Nonna Sbuffa, in a terminal-style window. She knows the whole game.
 // Replies come from a small server (server/chat-worker) that asks Google's Gemini with her personality.
 // Until that server is set up, or when it can't be reached, she answers from a few lines of her own.
 const Chat = (() => {
@@ -94,7 +94,7 @@ const Chat = (() => {
   }
 
   function open() {
-    $('chatTitle').textContent = `Sbuffector · ${name()}`;
+    $('chatTitle').textContent = 'Sbuffector';
     $('chatWin').classList.add('on');
     if (!$('chatOut').childElementCount) {
       const note = document.createElement('p');
@@ -103,7 +103,7 @@ const Chat = (() => {
       $('chatOut').append(note);
     }
     // The player writes first; the hint and note follow the current language.
-    $('chatIn').placeholder = tr('chatPh', { name: name() });
+    $('chatIn').placeholder = tr('chatPh', { name: 'Sbuffector' });
     $('chatOut').querySelector('.chatNote').textContent = tr('chatNote');
     setTimeout(() => $('chatIn').focus(), 30);
   }
