@@ -5,6 +5,10 @@ const Notify = (() => {
   const ASKED_KEY = 'sbuffogotchi.notifyAsked';
   const IDS = Array.from({ length: 60 }, (_, i) => 101 + i);
   const plugin = () => (window.Capacitor?.isNativePlatform?.() ? window.Capacitor.Plugins?.LocalNotifications : null);
+  // The Windows app: no plugin, but the game keeps running in the tray, so it fires its own timers.
+  const desktop = () => window.Desktop || null;
+  let timers = [];
+  const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
   let enabled = true;
   try { enabled = localStorage.getItem(KEY) !== 'off'; } catch { /* stays on */ }
 
@@ -25,6 +29,7 @@ const Notify = (() => {
     } catch { /* the player can switch it on in Settings */ }
   }
   async function clear() {
+    clearTimers();
     const p = plugin();
     if (!p) return;
     try {
@@ -34,6 +39,16 @@ const Notify = (() => {
   }
   // Replaces every pending reminder with this list of { id, title, body, at }.
   async function plan(list) {
+    if (desktop()) {
+      clearTimers();
+      if (!enabled) return;
+      const now = Date.now();
+      // Timers further away than ~24 days overflow, and the plan is rebuilt long before then anyway.
+      for (const n of list.filter((x) => x.at > now + 60000 && x.at - now < 2e9)) {
+        timers.push(setTimeout(() => desktop().notify(n.title, n.body), n.at - now));
+      }
+      return;
+    }
     const p = plugin();
     if (!p) return;
     await clear();
@@ -50,13 +65,13 @@ const Notify = (() => {
   async function setEnabled(on) {
     enabled = on;
     try { localStorage.setItem(KEY, on ? 'on' : 'off'); } catch { /* lasts until the app closes */ }
-    if (on) await granted(true).catch(() => false);
+    if (on && !desktop()) await granted(true).catch(() => false);
     else await clear();
   }
   return {
-    available: () => !!plugin(), enabled: () => enabled, setEnabled, askOnce, plan, clear,
-    allowed: () => granted(false).catch(() => false),
-    ask: () => granted(true).catch(() => false),
+    available: () => !!plugin() || !!desktop(), enabled: () => enabled, setEnabled, askOnce, plan, clear,
+    allowed: () => (desktop() ? Promise.resolve(true) : granted(false).catch(() => false)),
+    ask: () => (desktop() ? Promise.resolve(true) : granted(true).catch(() => false)),
     pending: async () => (await plugin()?.getPending?.())?.notifications || [],
   };
 })();

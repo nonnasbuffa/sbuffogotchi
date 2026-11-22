@@ -2826,13 +2826,30 @@ const Game = (() => {
       box.append(ic, bar);
     }
   }
+  // p.groups: [[title, tiles]], each tile [icon, value, label]. p.avatar: a sprite sheet (her first idle frame is shown).
   function fillProfile(p) {
     $('profName').textContent = p.name;
     $('profSince').textContent = p.since;
     $('profSeen').textContent = p.seen || '';
+    $('profAva').style.backgroundImage = `url(${p.avatar || 'sprites/icons/walker.png'})`;
+    $('profLvlRow').style.display = p.level ? '' : 'none';
+    if (p.level) {
+      $('profLvl').textContent = t('levelN', { n: p.level });
+      $('profXp').style.width = p.xp ? `${clamp((p.xp[0] / p.xp[1]) * 100)}%` : '0';
+      $('profXpTxt').textContent = p.xp ? `${p.xp[0]} / ${p.xp[1]} XP` : '';
+    }
     profileBars(p.food, p.energy, p.joy);
-    const grid = $('profGrid');
-    grid.replaceChildren(...p.tiles.map(([icon, value, label]) => statTile(`sprites/${icon}.png`, value, label)));
+    $('profGrid').replaceChildren(...p.groups.map(([title, tiles]) => {
+      const sec = document.createElement('div');
+      sec.className = 'profSec';
+      const h = document.createElement('h3');
+      h.textContent = title;
+      const grid = document.createElement('div');
+      grid.className = 'profGrid';
+      grid.replaceChildren(...tiles.map(([icon, value, label]) => statTile(`sprites/${icon}.png`, value, label)));
+      sec.append(h, grid);
+      return sec;
+    }));
     $('profActs').replaceChildren(...p.actions);
     $('profActs').className = p.actions.length > 1 ? 'row2' : 'row1';
   }
@@ -2848,19 +2865,25 @@ const Game = (() => {
       name: u ? u.name : t('guestName'),
       since: `${petName()} · ${t(u ? 'profJoined' : 'profPlaying', { d: fmtDate(S.createdAt) })}`,
       food: S.food, energy: S.energy, joy: S.joy,
-      tiles: [
-        ['icons/star', t('levelN', { n: S.level }), t('xpOf', { a: S.xp, b: xpNeeded() })],
-        ['icons/trophy', S.bossWins, t('profBosses')],
-        ['icons/bowl', S.streak, t('profStreak')],
-        ['icons/dumbbell', S.str, t('strength')],
-        ['icons/rice', S.rhythmBest || 0, t('profRhythm')],
-        ['icons/backpack', totalItems(), t('profItems')],
-        ['icons/diamond', S.items.diamond || 0, t('itemDiamond')],
-        ['icons/poken', (S.poken || 0).toLocaleString(I18n.current()), 'Poken'],
-        ['icons/cd', (S.cds || []).length, t('profCds')],
-        ['icons/trophy', `${S.duelWins || 0} - ${S.duelLosses || 0}`, t('profDuelsMine')],
-        ['icons/heart', S.life || 0, t('profDeaths')],
-        ['icons/friends', u ? '…' : '-', t('friends')],
+      avatar: `${skinNow().dir}/idle_sheet.png`, level: S.level, xp: [S.xp, xpNeeded()],
+      groups: [
+        [t('profSecFights'), [
+          ['icons/dumbbell', S.str, t('strength')],
+          ['icons/trophy', S.bossWins, t('profBosses')],
+          ['icons/trophy', `${S.duelWins || 0} - ${S.duelLosses || 0}`, t('profDuelsMine')],
+          ['icons/rice', S.rhythmBest || 0, t('profRhythm')],
+        ]],
+        [t('profSecCare'), [
+          ['icons/bowl', S.streak, t('profStreak')],
+          ['icons/heart', S.life || 0, t('profDeaths')],
+          ['icons/friends', u ? '…' : '-', t('friends')],
+        ]],
+        [t('profSecStuff'), [
+          ['icons/poken', (S.poken || 0).toLocaleString(I18n.current()), 'Poken'],
+          ['icons/diamond', S.items.diamond || 0, t('itemDiamond')],
+          ['icons/backpack', totalItems(), t('profItems')],
+          ['icons/cd', (S.cds || []).length, t('profCds')],
+        ]],
       ],
       actions: [logout],
     };
@@ -2871,7 +2894,7 @@ const Game = (() => {
     try {
       const [mine, fans] = await Promise.all([Cloud.getProfile(Cloud.me()), Cloud.addedMe()]);
       const count = (mine?.friends || []).filter((n) => fans.some((p) => p.id === n)).length;
-      const tile = [...$('profGrid').children].at(-1);
+      const tile = [...$('profGrid').querySelectorAll('.tile')].find((x) => x.querySelector('span')?.textContent === t('friends'));
       if (tile && $('s-profile').classList.contains('on')) tile.querySelector('b').textContent = count;
     } catch { /* stays as … */ }
   }
@@ -2902,15 +2925,19 @@ const Game = (() => {
       since: [st.petName, st.createdAt ? t('profJoined', { d: fmtDate(st.createdAt) }) : ''].filter(Boolean).join(' · '),
       seen: seenText(st.seen),
       food: now('food'), energy: now('energy'), joy: now('joy'),
-      tiles: [
-        ['icons/star', shown(st.level), t('level')],
-        ['icons/trophy', shown(st.bossWins), t('profBosses')],
-        ['icons/bowl', shown(st.streak), t('profStreak')],
-        ['icons/dumbbell', shown(st.str), t('strength')],
-        ['icons/rice', shown(st.rhythmBest), t('profRhythm')],
-        ['icons/backpack', shown(st.items), t('profItems')],
-        ['icons/heart', shown(st.deaths), t('profDeaths')],
-        ['icons/trophy', shown(st.duelWins), t('profDuels')],
+      level: st.level || 0,
+      groups: [
+        [t('profSecFights'), [
+          ['icons/dumbbell', shown(st.str), t('strength')],
+          ['icons/trophy', shown(st.bossWins), t('profBosses')],
+          ['icons/trophy', shown(st.duelWins), t('profDuels')],
+          ['icons/rice', shown(st.rhythmBest), t('profRhythm')],
+        ]],
+        [t('profSecCare'), [
+          ['icons/bowl', shown(st.streak), t('profStreak')],
+          ['icons/heart', shown(st.deaths), t('profDeaths')],
+          ['icons/backpack', shown(st.items), t('profItems')],
+        ]],
       ],
       actions: [heart, gift, battle],
     });
@@ -3252,7 +3279,7 @@ const Game = (() => {
   // A console like the ones in PC games, only for players in admin mode (unlocked with the code in Friends):
   // ` or F11 opens it, or Settings on phones. For everyone else those keys do nothing here.
   // Every change it makes is saved and sent to the server at once, as the player's real data.
-  const GAME_VERSION = '1.9.4';
+  const GAME_VERSION = '1.9.5';
   window.GAME_VERSION = GAME_VERSION; // read by updater.js to see if the phone app is behind
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const isAdmin = () => !!S.cheats?.unlocked;
