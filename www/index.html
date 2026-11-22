@@ -182,6 +182,9 @@ html.modern{--bg:#0e0d14;--win:rgba(16,15,24,.82);--panel:rgba(16,15,24,.82);--l
   --o1:#f5a3c7;--o2:#b9a3ff;--glowc:#f5a3c7;--pink:var(--o1);--edge:linear-gradient(135deg,var(--o1),var(--o2));--r:14px}
 html.modern,html.modern body{background:transparent}html.modern{background-color:#1b2a1f}
 html.modern body::before{content:"";position:fixed;inset:-60px;z-index:-1;background:url(sprites/room.png) center/cover;filter:blur(28px) saturate(1.8) brightness(.55);animation:hyprDrift 30s ease-in-out infinite alternate}
+/* Dark background option: a soft near-black gradient with a faint glow of the theme colour, instead of the blurred room. */
+html.modern.bgDark{background-color:#121019}
+html.modern.bgDark body::before{background:radial-gradient(120% 80% at 20% 0%,color-mix(in srgb,var(--glowc,#f5a3c7) 16%,transparent),transparent 60%),radial-gradient(100% 70% at 100% 100%,rgba(98,182,232,.10),transparent 60%),linear-gradient(160deg,#1c1828 0%,#141220 45%,#0f0d16 100%);filter:none}
 @keyframes hyprDrift{to{transform:scale(1.12) translate(2%,1%)}}
 /* Every window: dark glass inside, a thin pink-to-lilac gradient border. */
 html.modern button:not(.link):not(.hole):not(.pad),html.modern .bossRow,html.modern .infoCard,html.modern .day,html.modern .tile,html.modern .friendRow,
@@ -328,7 +331,7 @@ window.applyLookColors=function(c){var s=document.documentElement.style,rgba=fun
   if(c.btn)s.setProperty('--btnFill','linear-gradient('+rgba(c.btn,.86)+','+rgba(c.btn,.86)+')');
   if(c.win){s.setProperty('--win',rgba(c.win,.82));s.setProperty('--panelWin',rgba(c.win,.92))}
   if(c.o1)s.setProperty('--o1',c.o1);if(c.o2)s.setProperty('--o2',c.o2);if(c.text)s.setProperty('--text',c.text);if(c.glow)s.setProperty('--glowc',c.glow)};
-try{if(localStorage.getItem('sbuffogotchi.look')==='modern'){document.documentElement.classList.add('modern');applyLookColors(JSON.parse(localStorage.getItem('sbuffogotchi.colors')||'null'))}}catch(e){}
+try{if(localStorage.getItem('sbuffogotchi.bg')==='dark')document.documentElement.classList.add('bgDark');if(localStorage.getItem('sbuffogotchi.look')==='modern'){document.documentElement.classList.add('modern');applyLookColors(JSON.parse(localStorage.getItem('sbuffogotchi.colors')||'null'))}}catch(e){}
 </script>
 </head>
 <body>

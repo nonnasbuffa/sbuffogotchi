@@ -58,7 +58,7 @@ const Notify = (() => {
       id: n.id, title: n.title, body: n.body,
       // Reminders don't need to the minute: inexact alarms avoid Android 12+ asking for the 'Alarms & reminders' permission.
       schedule: { at: new Date(n.at), allowWhileIdle: true }, isExactNotification: false,
-      smallIcon: 'ic_stat_sbuffo', iconColor: '#ffc857',
+      smallIcon: 'ic_stat_sbuffo', iconColor: '#ffc857', largeIcon: 'ic_sbuffo_face', // her face beside the text
     }));
     if (notifications.length) await p.schedule({ notifications }).catch(() => { /* tried again next time */ });
   }

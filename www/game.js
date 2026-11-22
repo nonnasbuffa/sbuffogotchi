@@ -753,9 +753,23 @@ const Game = (() => {
   // ----- settings -----
   // Grouped like a phone's settings: cards with a heading, a label on the left and its control on the right.
   const CHAR_KEY = 'sbuffogotchi.char';
-  const charStyle = () => { try { return localStorage.getItem(CHAR_KEY) === '2d' ? '2d' : '3d'; } catch { return '3d'; } };
-  // She's 3D only in the Modern look, and only if the player hasn't picked 2D there.
-  const use3d = () => document.documentElement.classList.contains('modern') && charStyle() === '3d';
+// Each look remembers its own choice: Modern starts in 3D, Classic starts in 2D (pixel art).
+  const CHAR_KEY_CLASSIC = 'sbuffogotchi.charClassic';
+  const isModern = () => document.documentElement.classList.contains('modern');
+  const charStyle = () => {
+    try {
+      if (isModern()) return localStorage.getItem(CHAR_KEY) === '2d' ? '2d' : '3d';
+      return localStorage.getItem(CHAR_KEY_CLASSIC) === '3d' ? '3d' : '2d';
+    } catch { return isModern() ? '3d' : '2d'; }
+  };
+  const use3d = () => charStyle() === '3d';
+  // Modern background: the blurred room (see-through look) or a dark gradient.
+  const BG_KEY = 'sbuffogotchi.bg';
+  const bgStyle = () => { try { return localStorage.getItem(BG_KEY) === 'dark' ? 'dark' : 'room'; } catch { return 'room'; } };
+  function setBgStyle(v) {
+    document.documentElement.classList.toggle('bgDark', v === 'dark');
+    try { localStorage.setItem(BG_KEY, v); } catch { /* lasts until the app closes */ }
+  }
   function setLook(modern) {
     document.documentElement.classList.toggle('modern', modern);
     window.applyLookColors?.(modern ? lookColors() : null);
@@ -763,7 +777,7 @@ const Game = (() => {
     redrawPets();
   }
   function setCharStyle(style) {
-    try { localStorage.setItem(CHAR_KEY, style); } catch { /* lasts until the app closes */ }
+    try { localStorage.setItem(isModern() ? CHAR_KEY : CHAR_KEY_CLASSIC, style); } catch { /* lasts until the app closes */ }
     redrawPets();
   }
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -839,11 +853,12 @@ const Game = (() => {
     // Look. With Modern picked, a branch below it holds the Modern-only choices.
     const modern = document.documentElement.classList.contains('modern');
     const looks = card(t('setLook'));
-    row(looks, `✨ ${t('uiLook')}`, seg([['classic', t('uiClassic')], ['modern', t('uiModern')]], modern ? 'modern' : 'classic', (v) => setLook(v === 'modern')));
+    row(looks, `✨ ${t('uiLook')}`, seg([['classic', t('uiClassic')], ['modern', t('uiModern')]], modern ? 'modern' : 'classic', (v) => { setLook(v === 'modern'); renderSettings(); }));
+    row(looks, t('uiChar'), seg([['2d', '2D'], ['3d', '3D']], charStyle(), setCharStyle));
     if (modern) {
       const branch = el('div', 'setBranch');
       looks.append(branch);
-      row(branch, t('uiChar'), seg([['2d', '2D'], ['3d', '3D']], charStyle(), setCharStyle));
+      row(branch, `🌌 ${t('uiBg')}`, seg([['room', t('uiBgRoom')], ['dark', t('uiBgDark')]], bgStyle(), setBgStyle));
       goRow(branch, `🎨 ${t('colorsTitle')}`, openColors);
     }
     // Game
@@ -3279,7 +3294,7 @@ const Game = (() => {
   // A console like the ones in PC games, only for players in admin mode (unlocked with the code in Friends):
   // ` or F11 opens it, or Settings on phones. For everyone else those keys do nothing here.
   // Every change it makes is saved and sent to the server at once, as the player's real data.
-  const GAME_VERSION = '1.9.5';
+  const GAME_VERSION = '1.9.6';
   window.GAME_VERSION = GAME_VERSION; // read by updater.js to see if the phone app is behind
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const isAdmin = () => !!S.cheats?.unlocked;
