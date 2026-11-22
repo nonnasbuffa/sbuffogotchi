@@ -3294,7 +3294,7 @@ const Game = (() => {
   // A console like the ones in PC games, only for players in admin mode (unlocked with the code in Friends):
   // ` or F11 opens it, or Settings on phones. For everyone else those keys do nothing here.
   // Every change it makes is saved and sent to the server at once, as the player's real data.
-  const GAME_VERSION = '1.9.6';
+  const GAME_VERSION = '1.9.7';
   window.GAME_VERSION = GAME_VERSION; // read by updater.js to see if the phone app is behind
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const isAdmin = () => !!S.cheats?.unlocked;
@@ -3936,5 +3936,5 @@ const Game = (() => {
 
   // For tests: find challenges even in a background tab, and send one without the menus.
   window.__duels = { check: () => checkDuels(true), challenge: (id, game) => challenge(id, id, game), now: () => duel };
-  return { state: () => S, set: (patch) => { Object.assign(S, patch); save(); render(); }, checkIn, merge, xpNeeded, show, spawnGolden, mini: () => mini, reminders };
+  return { petName: () => petName(), state: () => S, set: (patch) => { Object.assign(S, patch); save(); render(); }, checkIn, merge, xpNeeded, show, spawnGolden, mini: () => mini, reminders };
 })();

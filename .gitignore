@@ -18,3 +18,4 @@ windows/dist/
 windows/app/
 minecraft-mod/build/
 minecraft-mod/run/
+.wrangler/
