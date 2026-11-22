@@ -42,7 +42,7 @@ const GAME_RULES = `
   10 bosses 3000, first friend 300, first gift 300, first duel win 400, 10 duel wins 2000, first race win 500, 50 in Rice Rhythm 800,
   first CD 300, all CDs 2000, first skin 1000.
 - Painting (Train menu, "Art" tab): paint a picture and give it to her. Score 0-100 from canvas covered, colours used (up to 6),
-  painting time (up to 4 minutes) and strokes. Prizes at most once every 20 minutes: joy +5 to +50, XP 10-70, Poken = score x 10,
+  painting time (up to 4 minutes) and strokes. Every painting gets prizes (no waiting): joy +5 to +50, XP 10-70, Poken = score x 10,
   1 item at 40+, 2 items at 70+, 3 items and a 3% Diamond chance at 90+. Her last 6 paintings hang in her gallery; tap one to see it big or delete it. While painting you can zoom (+/-, Ctrl+wheel) and use the hand to move around.
 - The chat (this conversation) is opened with the "Talk to Sbuffector" button on the home screen.
 - Platforms: website sbuffogotchi.web.app, Android, iPhone, Windows (tray icon by the clock, notifications). Updates come by themselves.

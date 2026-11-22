@@ -1104,15 +1104,11 @@ const Game = (() => {
   // ----- Painting for her -----
   // Paint a picture and give it to her. Effort counts: time spent painting, how much of the canvas is covered,
   // how many colours and strokes. A better painting makes her happier and earns more.
-  // Prizes come once every PAINT_GAP_MS, so a quick scribble can't be repeated for endless rewards.
-  const PAINT_GAP_MS = 20 * 60000;
   const PAINT_COLORS = ['#1b1b1b', '#ffffff', '#e8604c', '#ff9f43', '#ffc857', '#5fcf80', '#2e8b57', '#62b6e8', '#3d5afe', '#a66cff', '#f5a3c7', '#8d5a3b'];
   const PAINT_SIZES = [4, 10, 22];
   let paint = null;
   function renderArtTab(list) {
     menuRow(list, { key: 'paintTitle', about: 'paintAbout', art: 'sprites/icons/smile.png', tiredOk: true, start: startPaint }, 0);
-    const wait = (S.paintedAt || 0) + PAINT_GAP_MS - Date.now();
-    if (wait > 0) list.append(Object.assign(document.createElement('p'), { className: 'center dim', textContent: t('paintWait', { m: Math.ceil(wait / 60000) }) }));
     const pics = S.paintings || [];
     if (!pics.length) return;
     list.append(heading('paintGallery'));
@@ -1254,13 +1250,7 @@ const Game = (() => {
     small.width = 160; small.height = 120;
     small.getContext('2d').drawImage(cv, 0, 0, 160, 120);
     S.paintings = [{ img: small.toDataURL('image/jpeg', 0.6), score, at: Date.now() }, ...(S.paintings || [])].slice(0, 6);
-    const rewarded = Date.now() >= (S.paintedAt || 0) + PAINT_GAP_MS;
     paint = null;
-    if (!rewarded) {
-      S.joy = clamp(S.joy + 3);
-      changed(); show('home'); play($('pet'), 'happy', restingAnim());
-      return toast(t('paintNoPrize', { s: score }));
-    }
     S.paintedAt = Date.now();
     S.joy = clamp(S.joy + Math.round(5 + score * 0.45));
     const xp = addXp(Math.round(10 + score * 0.6));
@@ -3471,7 +3461,7 @@ const Game = (() => {
   // A console like the ones in PC games, only for players in admin mode (unlocked with the code in Friends):
   // ` or F11 opens it, or Settings on phones. For everyone else those keys do nothing here.
   // Every change it makes is saved and sent to the server at once, as the player's real data.
-  const GAME_VERSION = '1.9.12';
+  const GAME_VERSION = '1.9.13';
   window.GAME_VERSION = GAME_VERSION; // read by updater.js to see if the phone app is behind
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const isAdmin = () => !!S.cheats?.unlocked;
