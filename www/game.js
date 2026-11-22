@@ -1118,13 +1118,14 @@ const Game = (() => {
     list.append(heading('paintGallery'));
     const g = document.createElement('div');
     g.className = 'gallery';
-    for (const p of pics) {
+    pics.forEach((p, i) => {
       const fig = document.createElement('figure');
       const img = document.createElement('img');
       img.src = p.img; img.alt = '';
+      img.onclick = () => openPaintingView(i);
       fig.append(img, Object.assign(document.createElement('figcaption'), { textContent: `★ ${p.score} · ${fmtDate(p.at)}` }));
       g.append(fig);
-    }
+    });
     list.append(g);
   }
   function startPaint() {
@@ -1132,7 +1133,8 @@ const Game = (() => {
     const g = cv.getContext('2d');
     g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
     g.lineCap = 'round'; g.lineJoin = 'round';
-    paint = { color: PAINT_COLORS[2], size: PAINT_SIZES[1], erase: false, strokes: 0, colors: new Set(), activeMs: 0, lastMove: 0, undo: [] };
+    $('paintHand').classList.remove('on'); $('paintWrap').classList.remove('hand');
+    paint = { zoom: 1, hand: false, color: PAINT_COLORS[2], size: PAINT_SIZES[1], erase: false, strokes: 0, colors: new Set(), activeMs: 0, lastMove: 0, undo: [] };
     $('paintColors').replaceChildren(...PAINT_COLORS.map((c) => {
       const b = document.createElement('button');
       b.style.background = c; b.setAttribute('aria-label', c);
@@ -1147,8 +1149,9 @@ const Game = (() => {
       b.onclick = () => { paint.size = s; paintTools(); };
       return b;
     }));
-    paintTools(); paintInfo();
+    paintTools();
     show('paint');
+    paintZoom(1);
   }
   function paintTools() {
     [...$('paintColors').children].forEach((b, i) => b.classList.toggle('on', !paint.erase && PAINT_COLORS[i] === paint.color));
@@ -1166,15 +1169,41 @@ const Game = (() => {
       + Math.min(30, (paint.activeMs / 240000) * 30) + Math.min(10, (paint.strokes / 40) * 10);
     return Math.round(Math.min(100, score));
   }
-  function paintInfo() {
-    $('paintInfo').textContent = t('paintInfo', { m: Math.floor(paint.activeMs / 60000), s: String(Math.floor(paint.activeMs / 1000) % 60).padStart(2, '0'), c: paint.colors.size });
+  // Zoom: 100% fits the canvas on screen; up to 400%. When zoomed, scroll (or use the hand) to move around.
+  function paintZoom(z) {
+    if (!paint) return;
+    const wrap = $('paintWrap'), cv = $('paintCanvas');
+    const old = paint.zoom || 1;
+    paint.zoom = Math.max(1, Math.min(4, Math.round(z * 4) / 4));
+    // 100% = as big as fits in the space, keeping 4:3.
+    const fit = Math.min(wrap.clientWidth - 8, (wrap.clientHeight - 8) * 4 / 3);
+    const w = Math.max(160, fit) * paint.zoom;
+    // Keep the middle of the view where it was.
+    const cx = (wrap.scrollLeft + wrap.clientWidth / 2) / (cv.offsetWidth || 1), cy = (wrap.scrollTop + wrap.clientHeight / 2) / (cv.offsetHeight || 1);
+    cv.style.width = `${w}px`; cv.style.height = `${w * 3 / 4}px`;
+    if (old !== paint.zoom) { wrap.scrollLeft = cx * cv.offsetWidth - wrap.clientWidth / 2; wrap.scrollTop = cy * cv.offsetHeight - wrap.clientHeight / 2; }
+    $('paintZoomTxt').textContent = `${Math.round(paint.zoom * 100)}%`;
+  }
+  function openPaintingView(i) {
+    const p = (S.paintings || [])[i];
+    if (!p) return;
+    $('paintViewImg').src = p.img;
+    $('paintViewInfo').textContent = `★ ${p.score} · ${fmtDate(p.at)}`;
+    $('paintDelete').onclick = () => {
+      if (!confirm(t('paintDeleteConfirm'))) return;
+      S.paintings.splice(i, 1);
+      changed();
+      $('paintView').classList.remove('on');
+      renderGameMenu();
+    };
+    $('paintView').classList.add('on');
   }
   {
     const cv = $('paintCanvas');
     let last = null;
     const at = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * (cv.width / r.width), (e.clientY - r.top) * (cv.height / r.height)]; };
     cv.onpointerdown = (e) => {
-      if (!paint) return;
+      if (!paint || paint.hand) return;
       e.preventDefault();
       cv.setPointerCapture(e.pointerId);
       const g = cv.getContext('2d');
@@ -1187,7 +1216,7 @@ const Game = (() => {
       g.arc(last[0], last[1], paint.size / 2, 0, Math.PI * 2); g.fill();
     };
     cv.onpointermove = (e) => {
-      if (!last || !paint) return;
+      if (!last || !paint || paint.hand) return;
       const p = at(e), g = cv.getContext('2d');
       g.strokeStyle = paint.erase ? '#fff' : paint.color; g.lineWidth = paint.size;
       g.beginPath(); g.moveTo(last[0], last[1]); g.lineTo(p[0], p[1]); g.stroke();
@@ -1195,7 +1224,6 @@ const Game = (() => {
       // Only time actually spent painting counts (pauses longer than 2 s don't).
       const now = performance.now();
       paint.activeMs += Math.min(2000, now - paint.lastMove); paint.lastMove = now;
-      paintInfo();
     };
     cv.onpointerup = cv.onpointercancel = () => { last = null; };
     $('paintErase').onclick = () => { paint.erase = !paint.erase; paintTools(); };
@@ -1203,6 +1231,19 @@ const Game = (() => {
     $('paintClear').onclick = () => { if (!paint) return; const g = cv.getContext('2d'); paint.undo.push(g.getImageData(0, 0, cv.width, cv.height)); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); };
     $('paintBack').onclick = () => { paint = null; trainTab = 'art'; show('trainMenu'); renderGameMenu(); };
     $('paintGive').onclick = givePainting;
+    $('paintZoomIn').onclick = () => paintZoom((paint?.zoom || 1) + 0.5);
+    $('paintZoomOut').onclick = () => paintZoom((paint?.zoom || 1) - 0.5);
+    // The hand moves around a zoomed painting instead of drawing.
+    $('paintHand').onclick = () => { if (!paint) return; paint.hand = !paint.hand; $('paintHand').classList.toggle('on', paint.hand); $('paintWrap').classList.toggle('hand', paint.hand); };
+    // Ctrl + mouse wheel (or a trackpad pinch) zooms too.
+    $('paintWrap').addEventListener('wheel', (e) => { if (!e.ctrlKey || !paint) return; e.preventDefault(); paintZoom(paint.zoom - Math.sign(e.deltaY) * 0.25); }, { passive: false });
+    // Dragging with the hand.
+    let pan = null;
+    $('paintWrap').addEventListener('pointerdown', (e) => { if (paint?.hand) pan = { x: e.clientX, y: e.clientY, l: $('paintWrap').scrollLeft, t: $('paintWrap').scrollTop }; });
+    addEventListener('pointermove', (e) => { if (pan) { $('paintWrap').scrollLeft = pan.l - (e.clientX - pan.x); $('paintWrap').scrollTop = pan.t - (e.clientY - pan.y); } });
+    addEventListener('pointerup', () => { pan = null; });
+    addEventListener('resize', () => { if (paint && $('s-paint').classList.contains('on')) paintZoom(paint.zoom); });
+    $('paintViewClose').onclick = () => $('paintView').classList.remove('on');
   }
   function givePainting() {
     if (!paint) return;
@@ -3430,7 +3471,7 @@ const Game = (() => {
   // A console like the ones in PC games, only for players in admin mode (unlocked with the code in Friends):
   // ` or F11 opens it, or Settings on phones. For everyone else those keys do nothing here.
   // Every change it makes is saved and sent to the server at once, as the player's real data.
-  const GAME_VERSION = '1.9.11';
+  const GAME_VERSION = '1.9.12';
   window.GAME_VERSION = GAME_VERSION; // read by updater.js to see if the phone app is behind
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const isAdmin = () => !!S.cheats?.unlocked;

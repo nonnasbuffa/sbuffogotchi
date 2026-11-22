@@ -43,7 +43,7 @@ const GAME_RULES = `
   first CD 300, all CDs 2000, first skin 1000.
 - Painting (Train menu, "Art" tab): paint a picture and give it to her. Score 0-100 from canvas covered, colours used (up to 6),
   painting time (up to 4 minutes) and strokes. Prizes at most once every 20 minutes: joy +5 to +50, XP 10-70, Poken = score x 10,
-  1 item at 40+, 2 items at 70+, 3 items and a 3% Diamond chance at 90+. Her last 6 paintings hang in her gallery.
+  1 item at 40+, 2 items at 70+, 3 items and a 3% Diamond chance at 90+. Her last 6 paintings hang in her gallery; tap one to see it big or delete it. While painting you can zoom (+/-, Ctrl+wheel) and use the hand to move around.
 - The chat (this conversation) is opened with the "Talk to Sbuffector" button on the home screen.
 - Platforms: website sbuffogotchi.web.app, Android, iPhone, Windows (tray icon by the clock, notifications). Updates come by themselves.
 - There is an admin-only area; if asked, say it's only for the game's admins and don't explain anything about it.

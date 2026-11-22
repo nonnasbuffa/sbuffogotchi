@@ -246,8 +246,11 @@ html.modern .updBox{border-radius:18px;border:2px solid #f5a3c7;background:rgba(
 .termWin.on{display:flex}
 /* Train menu tabs, and the painting screen. */
 .trainTabs{display:grid;grid-template-columns:1fr 1fr;gap:6px}.trainTabs button{min-height:40px;opacity:.65}.trainTabs button.on{opacity:1;box-shadow:inset 0 -3px 0 var(--gold)}
-#s-paint{gap:8px}.paintWrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
-#paintCanvas{max-width:100%;max-height:100%;aspect-ratio:4/3;background:#fff;border:3px solid var(--line);border-radius:6px;touch-action:none;cursor:crosshair}
+#s-paint{gap:8px;flex:none;height:calc(100dvh - 32px - max(12px,env(safe-area-inset-top)))}.paintWrap{flex:1 1 0;min-height:0;min-width:0;width:100%;overflow:auto;display:grid;place-items:center;border-radius:6px}
+.paintZoomBox{position:relative}.paintWrap.hand #paintCanvas{cursor:grab;touch-action:pan-x pan-y}
+.paintZoom{min-width:52px;text-align:center;align-self:center;color:var(--dim)}#paintHand.on{box-shadow:inset 0 0 0 2px var(--gold)}
+.gallery img{cursor:zoom-in}
+#paintCanvas{display:block;aspect-ratio:4/3;background:#fff;border:3px solid var(--line);border-radius:6px;touch-action:none;cursor:crosshair}
 .paintTools{display:flex;flex-direction:column;gap:6px}.paintColors{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
 .paintColors button{width:30px;height:30px;min-height:0;padding:0;border-radius:50%;border:3px solid #0006}.paintColors button.on{border-color:#fff;transform:scale(1.15)}
 .paintRow{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}.paintRow button{min-height:36px;padding:4px 10px}
@@ -464,12 +467,12 @@ try{if(localStorage.getItem('sbuffogotchi.bg')==='dark')document.documentElement
 
   <section class="screen" id="s-paint">
     <h2 data-i18n="paintTitle"></h2>
-    <div class="paintWrap"><canvas id="paintCanvas" width="640" height="480"></canvas></div>
+    <div class="paintWrap" id="paintWrap"><div class="paintZoomBox" id="paintZoomBox"><canvas id="paintCanvas" width="640" height="480"></canvas></div></div>
     <div class="paintTools">
       <div class="paintColors" id="paintColors"></div>
       <div class="paintRow"><div class="paintSizes" id="paintSizes"></div><button id="paintErase" data-i18n="paintErase"></button><button id="paintUndo" data-i18n="paintUndo"></button><button id="paintClear" data-i18n="paintClear"></button></div>
+      <div class="paintRow"><button id="paintZoomOut" aria-label="Zoom out">−</button><span class="paintZoom" id="paintZoomTxt">100%</span><button id="paintZoomIn" aria-label="Zoom in">+</button><button id="paintHand" data-i18n="paintHand"></button></div>
     </div>
-    <p class="center dim" id="paintInfo"></p>
     <div class="row2"><button id="paintBack" data-i18n="back"></button><button class="main" id="paintGive" data-i18n="paintGive"></button></div>
   </section>
 
@@ -593,6 +596,11 @@ try{if(localStorage.getItem('sbuffogotchi.bg')==='dark')document.documentElement
   <div class="termOut" id="termOut"></div>
   <div class="termLine"><span class="tp">$</span><input id="termIn" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="send"></div>
 </div>
+<div class="modal" id="paintView"><div class="panel">
+  <img id="paintViewImg" alt="" style="width:100%;aspect-ratio:4/3;background:#fff;border:4px solid #6b4a2b;border-radius:4px;image-rendering:auto">
+  <p class="center dim" id="paintViewInfo"></p>
+  <div class="row2"><button class="boss" id="paintDelete" data-i18n="paintDelete"></button><button class="main" id="paintViewClose" data-i18n="close"></button></div>
+</div></div>
 <div class="termWin chatWin" id="chatWin" role="dialog" aria-labelledby="chatTitle">
   <div class="termTitle" id="chatDrag"><span class="termDots"><i></i><i></i><i></i></span><b id="chatTitle"></b><button id="btnChatClose" aria-label="Close">✕</button></div>
   <div class="termOut chatOut" id="chatOut"></div>
