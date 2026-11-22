@@ -244,6 +244,17 @@ html.modern .updBox{border-radius:18px;border:2px solid #f5a3c7;background:rgba(
   background:rgba(16,15,24,.9);backdrop-filter:blur(14px);border:2px solid #f5a3c7;border-radius:14px;box-shadow:0 0 14px rgba(245,163,199,.25),0 20px 60px rgba(0,0,0,.6);
   font:14px/1.35 "Courier New",ui-monospace,monospace;color:#e8e3f0;overflow:hidden;user-select:text}
 .termWin.on{display:flex}
+/* Train menu tabs, and the painting screen. */
+.trainTabs{display:grid;grid-template-columns:1fr 1fr;gap:6px}.trainTabs button{min-height:40px;opacity:.65}.trainTabs button.on{opacity:1;box-shadow:inset 0 -3px 0 var(--gold)}
+#s-paint{gap:8px}.paintWrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+#paintCanvas{max-width:100%;max-height:100%;aspect-ratio:4/3;background:#fff;border:3px solid var(--line);border-radius:6px;touch-action:none;cursor:crosshair}
+.paintTools{display:flex;flex-direction:column;gap:6px}.paintColors{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.paintColors button{width:30px;height:30px;min-height:0;padding:0;border-radius:50%;border:3px solid #0006}.paintColors button.on{border-color:#fff;transform:scale(1.15)}
+.paintRow{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}.paintRow button{min-height:36px;padding:4px 10px}
+.paintSizes{display:flex;gap:6px}.paintSizes button{width:36px;min-height:36px;padding:0;display:flex;align-items:center;justify-content:center}
+.paintSizes button i{display:block;border-radius:50%;background:currentColor}.paintSizes button.on,#paintErase.on{box-shadow:inset 0 0 0 2px var(--gold)}
+.gallery{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.gallery img{width:100%;aspect-ratio:4/3;background:#fff;border:3px solid #6b4a2b;border-radius:4px;object-fit:cover}
+.gallery figure{margin:0;text-align:center;font-size:12px;color:var(--dim)}
 /* Resizable like a desktop window: drag the bottom-right corner (min size keeps it usable). */
 .termWin{min-width:300px;min-height:260px;max-width:calc(100vw - 8px);max-height:calc(100dvh - 8px)}
 .winGrip{position:absolute;right:0;bottom:0;width:22px;height:22px;cursor:nwse-resize;touch-action:none;z-index:2;opacity:.6;
@@ -444,11 +455,23 @@ try{if(localStorage.getItem('sbuffogotchi.bg')==='dark')document.documentElement
 
   <section class="screen" id="s-trainMenu">
     <h2 data-i18n="training"></h2>
-    <p class="center dim" data-i18n="trainIntro"></p>
+    <div class="trainTabs" role="tablist"><button id="tabGames" class="on" data-i18n="tabGames"></button><button id="tabArt" data-i18n="tabArt"></button></div>
+    <p class="center dim" id="trainIntroText" data-i18n="trainIntro"></p>
     <div class="menuList" id="trainList"></div>
     <button data-home data-i18n="back"></button>
   </section>
 
+
+  <section class="screen" id="s-paint">
+    <h2 data-i18n="paintTitle"></h2>
+    <div class="paintWrap"><canvas id="paintCanvas" width="640" height="480"></canvas></div>
+    <div class="paintTools">
+      <div class="paintColors" id="paintColors"></div>
+      <div class="paintRow"><div class="paintSizes" id="paintSizes"></div><button id="paintErase" data-i18n="paintErase"></button><button id="paintUndo" data-i18n="paintUndo"></button><button id="paintClear" data-i18n="paintClear"></button></div>
+    </div>
+    <p class="center dim" id="paintInfo"></p>
+    <div class="row2"><button id="paintBack" data-i18n="back"></button><button class="main" id="paintGive" data-i18n="paintGive"></button></div>
+  </section>
 
   <section class="screen" id="s-whack">
     <h2 data-i18n="whack"></h2>

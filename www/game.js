@@ -1086,14 +1086,150 @@ const Game = (() => {
     row.append(img, text, go);
     list.append(row);
   }
+  let trainTab = 'games';
   function renderGameMenu() {
     tick();
+    $('tabGames').classList.toggle('on', trainTab === 'games');
+    $('tabArt').classList.toggle('on', trainTab === 'art');
+    $('trainIntroText').textContent = t(trainTab === 'art' ? 'artIntro' : 'trainIntro');
     const list = $('trainList');
     list.textContent = '';
+    if (trainTab === 'art') return renderArtTab(list);
     for (const [key, games, cost] of [['trainHeader', TRAINING_GAMES, TRAIN_COST], ['gamesHeader', MINI_GAMES, MINI_COST]]) {
       list.append(heading(key));
       games.forEach((game) => menuRow(list, game, game.cost ?? cost));
     }
+  }
+
+  // ----- Painting for her -----
+  // Paint a picture and give it to her. Effort counts: time spent painting, how much of the canvas is covered,
+  // how many colours and strokes. A better painting makes her happier and earns more.
+  // Prizes come once every PAINT_GAP_MS, so a quick scribble can't be repeated for endless rewards.
+  const PAINT_GAP_MS = 20 * 60000;
+  const PAINT_COLORS = ['#1b1b1b', '#ffffff', '#e8604c', '#ff9f43', '#ffc857', '#5fcf80', '#2e8b57', '#62b6e8', '#3d5afe', '#a66cff', '#f5a3c7', '#8d5a3b'];
+  const PAINT_SIZES = [4, 10, 22];
+  let paint = null;
+  function renderArtTab(list) {
+    menuRow(list, { key: 'paintTitle', about: 'paintAbout', art: 'sprites/icons/smile.png', tiredOk: true, start: startPaint }, 0);
+    const wait = (S.paintedAt || 0) + PAINT_GAP_MS - Date.now();
+    if (wait > 0) list.append(Object.assign(document.createElement('p'), { className: 'center dim', textContent: t('paintWait', { m: Math.ceil(wait / 60000) }) }));
+    const pics = S.paintings || [];
+    if (!pics.length) return;
+    list.append(heading('paintGallery'));
+    const g = document.createElement('div');
+    g.className = 'gallery';
+    for (const p of pics) {
+      const fig = document.createElement('figure');
+      const img = document.createElement('img');
+      img.src = p.img; img.alt = '';
+      fig.append(img, Object.assign(document.createElement('figcaption'), { textContent: `★ ${p.score} · ${fmtDate(p.at)}` }));
+      g.append(fig);
+    }
+    list.append(g);
+  }
+  function startPaint() {
+    const cv = $('paintCanvas');
+    const g = cv.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    paint = { color: PAINT_COLORS[2], size: PAINT_SIZES[1], erase: false, strokes: 0, colors: new Set(), activeMs: 0, lastMove: 0, undo: [] };
+    $('paintColors').replaceChildren(...PAINT_COLORS.map((c) => {
+      const b = document.createElement('button');
+      b.style.background = c; b.setAttribute('aria-label', c);
+      b.onclick = () => { paint.color = c; paint.erase = false; paintTools(); };
+      return b;
+    }));
+    $('paintSizes').replaceChildren(...PAINT_SIZES.map((s) => {
+      const b = document.createElement('button');
+      const dot = document.createElement('i');
+      dot.style.width = dot.style.height = `${Math.min(22, s)}px`;
+      b.append(dot);
+      b.onclick = () => { paint.size = s; paintTools(); };
+      return b;
+    }));
+    paintTools(); paintInfo();
+    show('paint');
+  }
+  function paintTools() {
+    [...$('paintColors').children].forEach((b, i) => b.classList.toggle('on', !paint.erase && PAINT_COLORS[i] === paint.color));
+    [...$('paintSizes').children].forEach((b, i) => b.classList.toggle('on', PAINT_SIZES[i] === paint.size));
+    $('paintErase').classList.toggle('on', paint.erase);
+  }
+  // How good the painting is, 0-100: canvas covered (35), colours used (25), time spent (30), strokes (10).
+  function paintScore() {
+    const cv = $('paintCanvas');
+    const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+    let inked = 0, n = 0;
+    for (let i = 0; i < d.length; i += 4 * 16) { n++; if (d[i] < 245 || d[i + 1] < 245 || d[i + 2] < 245) inked++; }
+    const cover = inked / n;
+    const score = Math.min(35, (cover / 0.6) * 35) + Math.min(25, (paint.colors.size / 6) * 25)
+      + Math.min(30, (paint.activeMs / 240000) * 30) + Math.min(10, (paint.strokes / 40) * 10);
+    return Math.round(Math.min(100, score));
+  }
+  function paintInfo() {
+    $('paintInfo').textContent = t('paintInfo', { m: Math.floor(paint.activeMs / 60000), s: String(Math.floor(paint.activeMs / 1000) % 60).padStart(2, '0'), c: paint.colors.size });
+  }
+  {
+    const cv = $('paintCanvas');
+    let last = null;
+    const at = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * (cv.width / r.width), (e.clientY - r.top) * (cv.height / r.height)]; };
+    cv.onpointerdown = (e) => {
+      if (!paint) return;
+      e.preventDefault();
+      cv.setPointerCapture(e.pointerId);
+      const g = cv.getContext('2d');
+      paint.undo.push(g.getImageData(0, 0, cv.width, cv.height));
+      if (paint.undo.length > 10) paint.undo.shift();
+      paint.strokes += 1;
+      if (!paint.erase) paint.colors.add(paint.color);
+      last = at(e); paint.lastMove = performance.now();
+      g.beginPath(); g.fillStyle = paint.erase ? '#fff' : paint.color;
+      g.arc(last[0], last[1], paint.size / 2, 0, Math.PI * 2); g.fill();
+    };
+    cv.onpointermove = (e) => {
+      if (!last || !paint) return;
+      const p = at(e), g = cv.getContext('2d');
+      g.strokeStyle = paint.erase ? '#fff' : paint.color; g.lineWidth = paint.size;
+      g.beginPath(); g.moveTo(last[0], last[1]); g.lineTo(p[0], p[1]); g.stroke();
+      last = p;
+      // Only time actually spent painting counts (pauses longer than 2 s don't).
+      const now = performance.now();
+      paint.activeMs += Math.min(2000, now - paint.lastMove); paint.lastMove = now;
+      paintInfo();
+    };
+    cv.onpointerup = cv.onpointercancel = () => { last = null; };
+    $('paintErase').onclick = () => { paint.erase = !paint.erase; paintTools(); };
+    $('paintUndo').onclick = () => { const u = paint?.undo.pop(); if (u) cv.getContext('2d').putImageData(u, 0, 0); };
+    $('paintClear').onclick = () => { if (!paint) return; const g = cv.getContext('2d'); paint.undo.push(g.getImageData(0, 0, cv.width, cv.height)); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); };
+    $('paintBack').onclick = () => { paint = null; trainTab = 'art'; show('trainMenu'); renderGameMenu(); };
+    $('paintGive').onclick = givePainting;
+  }
+  function givePainting() {
+    if (!paint) return;
+    const score = paintScore();
+    if (score < 5) return toast(t('paintEmpty'));
+    // A small framed copy for her gallery (kept small so the save stays light).
+    const cv = $('paintCanvas'), small = document.createElement('canvas');
+    small.width = 160; small.height = 120;
+    small.getContext('2d').drawImage(cv, 0, 0, 160, 120);
+    S.paintings = [{ img: small.toDataURL('image/jpeg', 0.6), score, at: Date.now() }, ...(S.paintings || [])].slice(0, 6);
+    const rewarded = Date.now() >= (S.paintedAt || 0) + PAINT_GAP_MS;
+    paint = null;
+    if (!rewarded) {
+      S.joy = clamp(S.joy + 3);
+      changed(); show('home'); play($('pet'), 'happy', restingAnim());
+      return toast(t('paintNoPrize', { s: score }));
+    }
+    S.paintedAt = Date.now();
+    S.joy = clamp(S.joy + Math.round(5 + score * 0.45));
+    const xp = addXp(Math.round(10 + score * 0.6));
+    const poken = score * 10;
+    S.poken = (S.poken || 0) + poken;
+    const found = score >= 90 ? rollDiamond(dropItems(3), 0.03) : score >= 70 ? dropItems(2) : score >= 40 ? dropItems(1) : {};
+    S.paintsGiven = (S.paintsGiven || 0) + 1;
+    changed(); show('home'); play($('pet'), 'happy', restingAnim());
+    const word = t(score >= 90 ? 'paintWow' : score >= 70 ? 'paintGreat' : score >= 40 ? 'paintNice' : 'paintOk');
+    toast(`${word} ★ ${score} · +${fmtPoken(poken)} · ${t('plusXp', { n: xp })}${Object.keys(found).length ? ` · ${itemsText(found)}` : ''}`);
   }
 
   // ----- Veggie Whack -----
@@ -3294,7 +3430,7 @@ const Game = (() => {
   // A console like the ones in PC games, only for players in admin mode (unlocked with the code in Friends):
   // ` or F11 opens it, or Settings on phones. For everyone else those keys do nothing here.
   // Every change it makes is saved and sent to the server at once, as the player's real data.
-  const GAME_VERSION = '1.9.10';
+  const GAME_VERSION = '1.9.11';
   window.GAME_VERSION = GAME_VERSION; // read by updater.js to see if the phone app is behind
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const isAdmin = () => !!S.cheats?.unlocked;
@@ -3853,6 +3989,8 @@ const Game = (() => {
   windowLike($('chatWin'), $('chatDrag'));
 
   // ----- wiring -----
+  $('tabGames').onclick = () => { trainTab = 'games'; renderGameMenu(); };
+  $('tabArt').onclick = () => { trainTab = 'art'; renderGameMenu(); };
   $('btnFeed').onclick = () => openBag('food');
   $('btnRest').onclick = () => openBag('energy');
   $('btnBag').onclick = () => openBag(null);
