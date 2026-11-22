@@ -3294,7 +3294,7 @@ const Game = (() => {
   // A console like the ones in PC games, only for players in admin mode (unlocked with the code in Friends):
   // ` or F11 opens it, or Settings on phones. For everyone else those keys do nothing here.
   // Every change it makes is saved and sent to the server at once, as the player's real data.
-  const GAME_VERSION = '1.9.7';
+  const GAME_VERSION = '1.9.8';
   window.GAME_VERSION = GAME_VERSION; // read by updater.js to see if the phone app is behind
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const isAdmin = () => !!S.cheats?.unlocked;
@@ -3811,19 +3811,46 @@ const Game = (() => {
     e.preventDefault(); e.stopPropagation();
     toggleTerminal();
   }, true);
-  // Dragged by its title bar, like the admin panel.
-  $('termDrag').onpointerdown = (e) => {
-    if (e.target.closest('button')) return;
-    const win = $('termWin');
-    const box = win.getBoundingClientRect();
-    const dx = e.clientX - box.left, dy = e.clientY - box.top;
-    $('termDrag').setPointerCapture(e.pointerId);
-    $('termDrag').onpointermove = (m) => {
-      win.style.left = `${Math.max(-box.width / 2, Math.min(innerWidth - box.width / 2, m.clientX - dx)) + box.width / 2}px`;
-      win.style.top = `${Math.max(0, Math.min(innerHeight - 40, m.clientY - dy)) + box.height / 2}px`;
+  // The terminal and the chat behave like desktop windows: dragged by the title bar, resized from the corner.
+  // Once moved they are placed by their top-left corner, so resizing grows them right and down like a real window.
+  function windowLike(win, bar) {
+    const pin = () => {
+      if (win.dataset.pinned) return;
+      const box = win.getBoundingClientRect();
+      Object.assign(win.style, { transform: 'none', left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
+      win.dataset.pinned = '1';
     };
-    $('termDrag').onpointerup = () => { $('termDrag').onpointermove = null; };
-  };
+    // A grip in the bottom-right corner resizes it (mouse and touch).
+    const grip = document.createElement('div');
+    grip.className = 'winGrip';
+    win.append(grip);
+    grip.onpointerdown = (e) => {
+      e.preventDefault();
+      pin();
+      const box = win.getBoundingClientRect();
+      const sx = e.clientX, sy = e.clientY;
+      grip.setPointerCapture(e.pointerId);
+      grip.onpointermove = (m) => {
+        win.style.width = `${Math.max(300, Math.min(innerWidth - box.left - 4, box.width + m.clientX - sx))}px`;
+        win.style.height = `${Math.max(260, Math.min(innerHeight - box.top - 4, box.height + m.clientY - sy))}px`;
+      };
+      grip.onpointerup = () => { grip.onpointermove = null; };
+    };
+    bar.onpointerdown = (e) => {
+      if (e.target.closest('button')) return;
+      pin();
+      const box = win.getBoundingClientRect();
+      const dx = e.clientX - box.left, dy = e.clientY - box.top;
+      bar.setPointerCapture(e.pointerId);
+      bar.onpointermove = (m) => {
+        win.style.left = `${Math.max(40 - box.width, Math.min(innerWidth - 40, m.clientX - dx))}px`;
+        win.style.top = `${Math.max(0, Math.min(innerHeight - 40, m.clientY - dy))}px`;
+      };
+      bar.onpointerup = () => { bar.onpointermove = null; };
+    };
+  }
+  windowLike($('termWin'), $('termDrag'));
+  windowLike($('chatWin'), $('chatDrag'));
 
   // ----- wiring -----
   $('btnFeed').onclick = () => openBag('food');

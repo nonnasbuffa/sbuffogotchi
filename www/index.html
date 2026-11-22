@@ -244,6 +244,10 @@ html.modern .updBox{border-radius:18px;border:2px solid #f5a3c7;background:rgba(
   background:rgba(16,15,24,.9);backdrop-filter:blur(14px);border:2px solid #f5a3c7;border-radius:14px;box-shadow:0 0 14px rgba(245,163,199,.25),0 20px 60px rgba(0,0,0,.6);
   font:14px/1.35 "Courier New",ui-monospace,monospace;color:#e8e3f0;overflow:hidden;user-select:text}
 .termWin.on{display:flex}
+/* Resizable like a desktop window: drag the bottom-right corner (min size keeps it usable). */
+.termWin{min-width:300px;min-height:260px;max-width:calc(100vw - 8px);max-height:calc(100dvh - 8px)}
+.winGrip{position:absolute;right:0;bottom:0;width:22px;height:22px;cursor:nwse-resize;touch-action:none;z-index:2;opacity:.6;
+  background:linear-gradient(135deg,transparent 45%,#f5a3c7 45% 55%,transparent 55% 70%,#f5a3c7 70% 80%,transparent 80%)}.winGrip:hover{opacity:1}
 /* Chat with her: same window as the terminal, with speech bubbles. */
 .chatWin{width:min(calc(100vw - 16px),560px);font-family:inherit}
 .chatOut{white-space:normal;display:flex;flex-direction:column;gap:8px}
@@ -567,7 +571,7 @@ try{if(localStorage.getItem('sbuffogotchi.bg')==='dark')document.documentElement
   <div class="termLine"><span class="tp">$</span><input id="termIn" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="send"></div>
 </div>
 <div class="termWin chatWin" id="chatWin" role="dialog" aria-labelledby="chatTitle">
-  <div class="termTitle"><span class="termDots"><i></i><i></i><i></i></span><b id="chatTitle"></b><button id="btnChatClose" aria-label="Close">✕</button></div>
+  <div class="termTitle" id="chatDrag"><span class="termDots"><i></i><i></i><i></i></span><b id="chatTitle"></b><button id="btnChatClose" aria-label="Close">✕</button></div>
   <div class="termOut chatOut" id="chatOut"></div>
   <div class="termLine"><span class="tp">›</span><input id="chatIn" maxlength="300" autocomplete="off" enterkeyhint="send"><button id="btnChatSend" class="chatSend" aria-label="Send">➤</button></div>
 </div>

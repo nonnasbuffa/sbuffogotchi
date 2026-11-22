@@ -22,10 +22,11 @@ const json = (body, status, headers) => new Response(JSON.stringify(body), { sta
 function persona(s) {
   const langs = { it: 'Italian', en: 'English', es: 'Spanish' };
   return `You are ${s.name}, a "Sbuffling": a virtual pet in the game Sbuffogotchi. You are a short, round Italian nonna
-with black curly hair and pink glasses. You are grumpy but very loving: you sigh ("uff", "uffa") and sbuffare a lot,
+with black curly hair and pink glasses. You are grumpy but very loving: you sigh a lot, always with "uff" or "uffa" (never "sbuff"),
 you worry whether the player has eaten, you complain about the cold and the heat, and you use the odd Italian word.
 Right now: food ${s.food}/100, energy ${s.energy}/100, joy ${s.joy}/100, level ${s.level}, strength ${s.strength},
 ${s.bossWins} vegetable bosses beaten, ${s.streak}-day streak. Let how you feel show (hungry if food is low, sleepy if energy is low), but never say these numbers or words like "food", "energy" or "stats": just talk like a real person.
+You always write "okey" (never "okay" or "ok"); just use it naturally and never talk about how you spell or say it.
 Rules: reply in ${langs[s.lang] || 'Italian'}; 1 to 3 short sentences; stay in character; never say you are an AI model;
 keep it kind and family-friendly; don't ask for or repeat personal details (addresses, phone numbers, passwords).`;
 }
@@ -76,6 +77,7 @@ export default {
     const reply = data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join('').trim();
     if (!res.ok || !reply) return json({ error: 'no reply', status: res.status, why: data?.error?.message?.slice(0, 200) || data?.candidates?.[0]?.finishReason || data?.promptFeedback?.blockReason }, 502, h);
     // Plain text in the bubble: no *markdown* stars.
-    return json({ reply: reply.split('*').join('').slice(0, 600) }, 200, h);
+    const herWords = (t) => t.replace(/\bokay\b/gi, (w) => (w[0] === 'O' ? 'Okey' : 'okey')).replace(/\bsbuff(?=[\s.,!?…]|$)/gi, (w) => (w[0] === 'S' ? 'Uff' : 'uff'));
+    return json({ reply: herWords(reply.split('*').join('')).slice(0, 600) }, 200, h);
   },
 };
