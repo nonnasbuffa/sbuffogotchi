@@ -3461,7 +3461,7 @@ const Game = (() => {
   // A console like the ones in PC games, only for players in admin mode (unlocked with the code in Friends):
   // ` or F11 opens it, or Settings on phones. For everyone else those keys do nothing here.
   // Every change it makes is saved and sent to the server at once, as the player's real data.
-  const GAME_VERSION = '1.9.13';
+  const GAME_VERSION = '1.9.14';
   window.GAME_VERSION = GAME_VERSION; // read by updater.js to see if the phone app is behind
   const term = { open: false, history: [], at: 0, started: Date.now() };
   const isAdmin = () => !!S.cheats?.unlocked;
@@ -3980,9 +3980,23 @@ const Game = (() => {
   }, true);
   // The terminal and the chat behave like desktop windows: dragged by the title bar, resized from the corner.
   // Once moved they are placed by their top-left corner, so resizing grows them right and down like a real window.
+  // Phones (narrow screens or touch-only) get full-screen sheets instead of movable windows.
+  const phoneQuery = matchMedia('(max-width: 700px), (pointer: coarse) and (max-width: 1000px)');
+  const isPhoneWin = () => phoneQuery.matches;
+  function phoneWin() {
+    document.documentElement.classList.toggle('phoneWin', isPhoneWin());
+    // The space above the keyboard, so the sheet shrinks instead of hiding the input.
+    const vv = window.visualViewport;
+    document.documentElement.style.setProperty('--vvh', `${Math.round(vv ? vv.height : innerHeight)}px`);
+    if (vv && isPhoneWin()) window.scrollTo(0, 0);
+  }
+  phoneQuery.addEventListener?.('change', phoneWin);
+  window.visualViewport?.addEventListener('resize', phoneWin);
+  addEventListener('resize', phoneWin);
+  phoneWin();
   function windowLike(win, bar) {
     const pin = () => {
-      if (win.dataset.pinned) return;
+      if (win.dataset.pinned || isPhoneWin()) return;
       const box = win.getBoundingClientRect();
       Object.assign(win.style, { transform: 'none', left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
       win.dataset.pinned = '1';
@@ -3992,6 +4006,7 @@ const Game = (() => {
     grip.className = 'winGrip';
     win.append(grip);
     grip.onpointerdown = (e) => {
+      if (isPhoneWin()) return;
       e.preventDefault();
       pin();
       const box = win.getBoundingClientRect();
@@ -4004,7 +4019,7 @@ const Game = (() => {
       grip.onpointerup = () => { grip.onpointermove = null; };
     };
     bar.onpointerdown = (e) => {
-      if (e.target.closest('button')) return;
+      if (e.target.closest('button') || isPhoneWin()) return;
       pin();
       const box = win.getBoundingClientRect();
       const dx = e.clientX - box.left, dy = e.clientY - box.top;
