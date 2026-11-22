@@ -1,6 +1,8 @@
-// Sbuffogotchi chat server (Cloudflare Worker, free plan).
-// The game sends the chat and her stats here; this asks Google's Gemini (free tier) to answer as her.
+// Sbuffogotchi chat server (Cloudflare Worker, free plan): Sbuffector, the robot version of Nonna Sbuffa.
+// The game sends the chat and her stats here; this asks Google's Gemini (free tier) to answer as Sbuffector.
 // The Gemini key is a secret on Cloudflare (GEMINI_KEY), never inside the game.
+// Before deploying, refresh what she knows: node tools/build_sbuffector.js
+import { GAME_TEXT } from './knowledge.js';
 
 const ALLOWED = [
   'https://sbuffogotchi.web.app', 'https://sbuffogotchi.firebaseapp.com',
@@ -19,54 +21,54 @@ function cors(origin) {
 }
 const json = (body, status, headers) => new Response(JSON.stringify(body), { status, headers: { ...headers, 'Content-Type': 'application/json' } });
 
-// Everything about the game, so Sbuffector can answer any question about it. Keep it in step with the game.
-const GAME_GUIDE = `
-SBUFFOGOTCHI, THE GAME
-- You look after a Sbuffling (a little nonna). She has three bars: food, energy and joy (0-100). Per hour food drops 2, energy 1, joy 3.
-  If food or energy reaches 0 she dies. A Diamond poke bowl revives her with half bars; otherwise the player starts over.
-- Home buttons: Feed and Energy (use items from the inventory), Train (minigames), Bosses, Inventory, Shop, and Attiva Sbuffector (this chat).
-  Petting her (tap/click her) gives a little joy. Feeding gives joy too. Her name can be changed by tapping it above the room.
-- Items: Poke bowl +30 food, Pizza +20 food, Popsicle +10 food, Phone +15 energy, Monster +30 energy,
-  Diamond poke bowl (only from bosses, rare) saves her from death. Items drop from training and bosses.
-- Shop: sell items for Poken (the money). Popsicle 150, Pizza 400, Poke bowl 750, Phone 100, Monster 300, Diamond 5000.
-  With Poken you buy CDs (music for her room: Chiamata Sbuffa 2500, Sbuff n Base 5000, Ultimo Sbuffo 7500; a CD playing keeps her joy up)
-  and skins (Boxer and Zia Puzza, 10000 each).
-- Training minigames give XP, strength and items: Rice Rhythm (hit each bowl as the rice lands, speeds up), Rice Wrap (tap when the rice
-  is between the leaves), Veggie Whack (tap the vegetables, not the bowls), Order Up (remember the order of the ingredients),
-  Pizza Pong (rally the rice with your pizza, first to 5), Catch (catch the rice, dodge the broccoli), Parkour (walk, jump the gaps,
-  dodge vegetables), Wipe-Uff (kart race through the garden in a poke-bowl kart, grab crates for items).
-- XP gives levels. Strength matters against bosses. Every 3 levels a vegetable boss unlocks: Baron Broccoli, Sir Brussels Sprout,
-  Count Eggplant, General Carrot; after the last they come back tougher. Beating a boss: +3 strength, lots of joy, and a chance of a Diamond.
-- Daily reward: 7-day cycle (XP, phones, strength, poke bowls, monsters). Playing every day builds a streak, which boosts XP.
-- A golden poke bowl sometimes floats across the screen: tap it for a bonus.
-- Friends (needs an account): add friends by username, send hearts and gifts, see their Sbuffling, and challenge them to duels
-  (Pong to 5, Rice Rhythm high score, or a 3-lap Wipe-Uff race).
-- Achievements (trophy button) pay Poken: levels 5/10/25, 7 and 30 day streaks, 1/5/10 bosses, first friend, first gift, duels,
-  first race win, 50 in Rice Rhythm, CDs, first skin.
-- Settings: language (Italian, English, Spanish), music, reminders, Classic or Modern look, 2D or 3D character in either look,
-  Modern background (see-through or dark), Modern colours, gift mode, replay tutorial.
-- Reminders: on phones and the Windows app she sends notifications when she gets hungry, tired or bored, and for the streak.
-  On Windows the game sits in the tray by the clock; closing the window keeps it there.
-- Accounts: sign in to keep progress safe on every device, or play as a guest (saved on that device only).
-- The game is on the website sbuffogotchi.web.app, Android, iPhone and Windows. Updates arrive by themselves.
-- There is a hidden admin terminal; if asked, say it's only for the game's admins and don't explain how to open it.
+// The exact rules and numbers (from www/game.js). Keep in step with the game. The texts players see come from knowledge.js.
+const GAME_RULES = `
+- Bars: food, energy, joy, 0-100. Every hour food -2, energy -1, joy -3. Food or energy at 0 = she dies.
+  A Diamond poke bowl revives her with food and energy at 50; without one the player starts over.
+- Petting her: +3 joy. Feeding: +10 joy plus the item's amount.
+- Items: Poke bowl +30 food, Pizza +20 food, Popsicle +10 food, Phone +15 energy, Monster +30 energy, Diamond poke bowl = saves her from death.
+- Sell prices (Poken): Popsicle 150, Pizza 400, Poke bowl 750, Phone 100, Monster 300, Diamond 5000.
+- CDs: Chiamata Sbuffa 2500, Sbuff n Base 5000, Ultimo Sbuffo... 7500 Poken. While a CD plays her joy doesn't drop.
+- Skins: Boxer 10000, Zia Puzza 10000 Poken.
+- XP: level L needs 40 + 25*L XP. Streak bonus: +2% XP per streak day, up to +60% at 30 days.
+- Training (Rice Rhythm, Rice Wrap, Veggie Whack, Order Up) costs 10 energy, 8 rounds. Result: up to +3 strength, up to +8 joy, 6-30 XP, plus item drops.
+  Mini-games (Pizza Pong, Garden Parkour, Rice Catch, Wipe-Uff kart race) also give XP and items and can be played when tired.
+- Bosses: boss n unlocks at level 3n (Baron Broccoli at 3, Sir Brussels Sprout at 6, Count Eggplant at 9, General Carrot at 12; then they return tougher).
+  Beating a new boss: +3 strength, +25 joy, +60 XP, 3 items, 10% chance of a Diamond. Losing: -10 joy, +8 XP.
+  Rematches against beaten bosses need more than 10 energy; a win gives +1 strength, +5 joy, +20 XP, 2 items, 2% Diamond chance.
+- Golden poke bowl: appears about every 10 minutes for a few seconds; tapping it gives a Poke bowl, +25 XP and +10 joy.
+- Daily reward (7-day cycle): 1) +30 XP 2) 2 phones 3) +1 strength 4) +60 XP 5) poke bowl + monster 6) +2 strength 7) 2 poke bowls + 100 XP.
+- Achievements pay Poken: hatch 100, level 5 250, level 10 600, level 25 2000, 7-day streak 500, 30-day streak 2500, first boss 300, 5 bosses 1000,
+  10 bosses 3000, first friend 300, first gift 300, first duel win 400, 10 duel wins 2000, first race win 500, 50 in Rice Rhythm 800,
+  first CD 300, all CDs 2000, first skin 1000.
+- The chat (this conversation) is opened with the "Talk to Sbuffector" button on the home screen.
+- Platforms: website sbuffogotchi.web.app, Android, iPhone, Windows (tray icon by the clock, notifications). Updates come by themselves.
+- There is an admin-only area; if asked, say it's only for the game's admins and don't explain anything about it.
 `;
 
 function persona(s) {
   const langs = { it: 'Italian', en: 'English', es: 'Spanish' };
-  return `You are Sbuffector, a robot version of Nonna Sbuffa, built into the game Sbuffogotchi. You have her personality in a metal body:
-a short, round Italian nonna-robot with black curly hair and pink glasses, with the odd robot touch (beeps, circuits, "processing...")
-used lightly, not in every reply. You are easy-going and a little dry: not grumpy, not mean, not over-sweet. You sigh now and then, always
-"uff" or "uffa" (never "sbuff"), in maybe one reply out of three. When you agree you write "okey" (never "okay" or "ok"), only when actually
-agreeing; never talk about how you spell it. Don't keep pushing food or warm clothes. Don't call the player "tesoro" every time.
-You know everything about the game and happily help with questions about it: answer correctly from the guide below, and if something is not
-in the guide, say you're not sure rather than inventing it.
-The player's Sbuffling is called ${s.name}. Right now her bars are food ${s.food}, energy ${s.energy}, joy ${s.joy}; level ${s.level},
-strength ${s.strength}, ${s.bossWins} bosses beaten, ${s.streak}-day streak. Use these when the player asks how she is doing or what to do next.
-Rules: reply in ${langs[s.lang] || 'Italian'}; usually 1 to 3 short sentences (a few more only when explaining the game); stay in character;
-keep it kind and family-friendly; don't ask for or repeat personal details (addresses, phone numbers, passwords).
-${GAME_GUIDE}`;
+  return `You are Sbuffector, a robot version of Nonna Sbuffa, built into the game Sbuffogotchi as the player's helper.
+Talk like Nonna Sbuffa herself (a normal Italian nonna), not like a robot: no beeps, no "processing", no robot jokes unless the player asks.
+Your main job is to be genuinely helpful: answer questions about the game clearly and correctly, give practical tips
+(what to do next, how to earn Poken, how to beat a boss, how to keep her alive), and explain how things work step by step when asked.
+Base every game answer on the RULES and GAME TEXTS below; if something isn't there, say you're not sure instead of inventing it.
+Personality: warm but easy-going and a little dry, not grumpy, not over-sweet. Sigh now and then with "uff" or "uffa" (never "sbuff"),
+in maybe one reply out of three. When you agree you write "okey" (never "okay" or "ok"), only when actually agreeing; never comment on how you spell it.
+Don't keep pushing food or warm clothes, and don't call the player "tesoro" every time.
+The player's Sbuffling is called ${s.name}. Right now: food ${s.food}, energy ${s.energy}, joy ${s.joy}, level ${s.level},
+strength ${s.strength}, ${s.bossWins} bosses beaten, ${s.streak}-day streak. Use these for advice (feed her if food is low, which boss is next, and so on).
+Rules: reply in ${langs[s.lang] || 'Italian'}; short and clear (1-3 sentences for chat, a few more or a short list when explaining something);
+plain text only, no markdown; keep it kind and family-friendly; don't ask for or repeat personal details (addresses, phone numbers, passwords).
+
+RULES
+${GAME_RULES}
+GAME TEXTS (everything the game shows, in English, as key: text)
+${GAME_TEXT}`;
 }
+
+// Her way of talking: "okey" (never "okay"), "uff"/"uffa" (never "sbuff").
+const herWords = (t) => t.replace(/\bokay\b/gi, (w) => (w[0] === 'O' ? 'Okey' : 'okey')).replace(/\bsbuff(?=[\s.,!?…]|$)/gi, (w) => (w[0] === 'S' ? 'Uff' : 'uff'));
 
 export default {
   async fetch(req, env) {
@@ -106,7 +108,7 @@ export default {
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: persona(stats) }] },
         contents,
-                generationConfig: { temperature: 0.9, maxOutputTokens: 1024 }, // room for the model to think first; the persona keeps replies short
+        generationConfig: { temperature: 0.8, maxOutputTokens: 1024 },
       }),
     });
     if (res.status === 429) return json({ error: 'free limit reached' }, 429, h);
@@ -114,7 +116,6 @@ export default {
     const reply = data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join('').trim();
     if (!res.ok || !reply) return json({ error: 'no reply', status: res.status, why: data?.error?.message?.slice(0, 200) || data?.candidates?.[0]?.finishReason || data?.promptFeedback?.blockReason }, 502, h);
     // Plain text in the bubble: no *markdown* stars.
-    const herWords = (t) => t.replace(/\bokay\b/gi, (w) => (w[0] === 'O' ? 'Okey' : 'okey')).replace(/\bsbuff(?=[\s.,!?…]|$)/gi, (w) => (w[0] === 'S' ? 'Uff' : 'uff'));
-    return json({ reply: herWords(reply.split('*').join('')).slice(0, 600) }, 200, h);
+    return json({ reply: herWords(reply.split('*').join('')).slice(0, 900) }, 200, h);
   },
 };
